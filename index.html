@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>ArcGIS + TouchDesigner: Map + Heightmap</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link
+			rel="stylesheet"
+			href="https://js.arcgis.com/4.30/esri/themes/light/main.css"
+		/>
+		<script src="https://js.arcgis.com/4.30/"></script>
+		<style>
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				background: #000;
+				color: #ddd;
+				font-family: system-ui, sans-serif;
+				overflow: hidden;
+			}
+			.wrap {
+				display: flex;
+				gap: 8px;
+				padding: 8px;
+				justify-content: center;
+				align-items: center;
+				flex-wrap: wrap;
+			}
+			/* Two square panes side-by-side */
+			#map,
+			#height {
+				width: 512px;
+				height: 512px;
+				box-shadow: 0 0 0 1px #333 inset;
+				background: #111;
+				border-radius: 8px;
+			}
+			/* Hide Esri UI chrome for a clean square */
+			.esri-ui {
+				display: none !important;
+			}
+			.labels {
+				position: absolute;
+				left: 12px;
+				top: 12px;
+				font-size: 14px;
+				opacity: 0.75;
+				pointer-events: none;
+				color: white;
+				z-index: 10;
+			}
+			.panel {
+				position: relative;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="wrap">
+			<div class="panel">
+				<div class="labels">Map (drag + scroll)</div>
+				<div id="map"></div>
+			</div>
+			<div class="panel">
+				<div class="labels">Heightmap (auto-updates)</div>
+				<canvas id="height"></canvas>
+			</div>
+		</div>
+
+		<script>
+			// Self-contained, well-commented code
+			// This script uses the ArcGIS API for JavaScript to create a
+			// 3D scene view and a corresponding 2D heightmap from elevation data.
+
+			// --- Config via URL ---
+			const qs = new URLSearchParams(location.search);
+			// Clamp size to a reasonable range for performance and display
+			const SIZE = Math.max(64, Math.min(4096, +(qs.get("size") || 512)));
+			const BASEMAP = qs.get("basemap") || "satellite"; // Default to satellite basemap
+
+			// Apply requested square size to both map and canvas
+			const mapDiv = document.getElementById("map");
+			const heightCanvas = document.getElementById("height");
+			mapDiv.style.width = mapDiv.style.height = SIZE + "px";
+			heightCanvas.width = heightCanvas.height = SIZE;
+			heightCanvas.style.width = heightCanvas.style.height = SIZE + "px";
+
+			// --- ArcGIS setup ---
+			require([
+				"esri/Map",
+				"esri/views/SceneView",
+				"esri/layers/ElevationLayer",
+				"esri/geometry/Multipoint",
+				"esri/geometry/SpatialReference",
+			], function (
+				EsriMap,
+				SceneView,
+				ElevationLayer,
+				Multipoint,
+				SpatialReference
+			) {
+				// The ElevationLayer provides real-world 3D elevation data
+				const elevationLayer = new ElevationLayer({
+					url: "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
+				});
+
+				// Create a 3D map with the specified basemap and elevation layer
+				const map = new EsriMap({
+					basemap: BASEMAP,
+					ground: { layers: [elevationLayer] },
+				});
+
+				// The SceneView displays the map in 3D
+				const view = new SceneView({
+					container: "map",
+					map,
+					qualityProfile: "low", // Improves performance
+					environment: { lighting: { directShadowsEnabled: false } },
+					camera: {
+						position: {
+							longitude: -118.805,
+							latitude: 34.027,
+							z: 15000,
+						},
+						tilt: 0,
+					},
+					ui: { components: [] }, // Hides the default UI elements
+					constraints: { tilt: { max: 0 } }, // Locks the camera to a top-down view
+				});
+
+				// --- Heightmap generation ---
+				// We'll sample a grid of points in the current extent and paint grayscale values.
+				const ctx = heightCanvas.getContext("2d", {
+					willReadFrequently: true,
+				});
+				const GRID = Math.min(256, SIZE); // Sampling grid resolution for a balance of quality and performance
+				let pending = false;
+
+				/**
+				 * Renders the heightmap by sampling elevation data from the current map view.
+				 */
+				async function renderHeightmap() {
+					// Ensure the view has an extent before proceeding
+					if (!view.extent) return;
+					const extent = view.extent.clone();
+
+					// Create a grid of points within the current map extent
+					const sr =
+						extent.spatialReference || SpatialReference.WebMercator;
+					const xs = GRID,
+						ys = GRID;
+					const points = [];
+					const dx = extent.width / xs;
+					const dy = extent.height / ys;
+
+					// Sample at the center of each grid cell
+					let y = extent.ymin + dy * 0.5;
+					for (let j = 0; j < ys; j++, y += dy) {
+						let x = extent.xmin + dx * 0.5;
+						for (let i = 0; i < xs; i++, x += dx) {
+							points.push([x, y]);
+						}
+					}
+
+					const mp = new Multipoint({ points, spatialReference: sr });
+
+					let result;
+					try {
+						// Query elevation for all points at once
+						result = await elevationLayer.queryElevation(mp, {
+							returnSampleInfo: false,
+						});
+					} catch (e) {
+						console.warn("Elevation query failed:", e);
+						pending = false;
+						return;
+					}
+
+					const pts = result.geometry.points; // [x,y,z] arrays
+
+					// Find the min and max elevation to normalize the values for a grayscale heightmap
+					let minZ = Infinity,
+						maxZ = -Infinity;
+					for (let k = 0; k < pts.length; k++) {
+						const z = pts[k][2];
+						if (z < minZ) minZ = z;
+						if (z > maxZ) maxZ = z;
+					}
+
+					if (!isFinite(minZ) || !isFinite(maxZ) || maxZ === minZ) {
+						pending = false;
+						return;
+					}
+
+					// Create an ImageData object for the heightmap pixels
+					const img = ctx.createImageData(xs, ys);
+					const scale = 255 / (maxZ - minZ);
+					for (let j = 0; j < ys; j++) {
+						for (let i = 0; i < xs; i++) {
+							const idx = j * xs + i;
+							const z = pts[idx][2];
+							// Normalize elevation to a 0-255 grayscale value
+							const g = Math.max(
+								0,
+								Math.min(255, Math.round((z - minZ) * scale))
+							);
+							const p = idx * 4;
+							img.data[p] = img.data[p + 1] = img.data[p + 2] = g;
+							img.data[p + 3] = 255;
+						}
+					}
+
+					// Draw the sampled image to a temporary canvas, then scale it up to the final size
+					const tempCanvas = document.createElement("canvas");
+				tempCanvas.width = xs;
+				tempCanvas.height = ys;
+				tempCanvas.getContext("2d").putImageData(img, 0, 0);
+				ctx.imageSmoothingEnabled = true;
+				ctx.clearRect(0, 0, SIZE, SIZE);
+				ctx.drawImage(tempCanvas, 0, 0, SIZE, SIZE);
+
+					pending = false;
+				}
+
+				// Schedules an update for the heightmap
+				function scheduleUpdate() {
+					if (pending) return;
+					pending = true;
+					// Debounce the update to avoid spamming the API with requests during rapid movement
+					requestAnimationFrame(() =>
+						setTimeout(renderHeightmap, 120)
+					);
+				}
+
+				// Watch the map view for changes and trigger heightmap updates
+				view.when(() => {
+					scheduleUpdate();
+					// Update when the visible extent changes
+					view.watch("extent", scheduleUpdate);
+					// Update when the view stops moving (e.g., after a pan or zoom)
+					view.watch("stationary", (s) => {
+						if (s) scheduleUpdate();
+					});
+					// Update if the window is resized
+					window.addEventListener("resize", scheduleUpdate);
+				});
+			});
+		</script>
+	</body>
+</html>
