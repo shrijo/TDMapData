@@ -66,7 +66,7 @@
         <!-- Right Map: Greyscale Heightmap -->
         <div class="map-container">
             <div id="heightmapViewDiv" class="map-view"></div>
-            <div class="map-label">Greyscale Heightmap</div>
+            <div class="map-label">Heightmap</div>
         </div>
     </div>
 
@@ -96,7 +96,7 @@
             // --- 2. Create the Heightmap (Right) ---
             // Use a tile layer for shaded relief to represent height
             const heightmapLayer = new TileLayer({
-                url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer"
+                url: "https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Terrain_Base/MapServer"
             });
 
             const heightmapBasemap = new Basemap({
