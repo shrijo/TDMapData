@@ -11,50 +11,52 @@
     <link rel="stylesheet" href="https://js.arcgis.com/4.33/esri/themes/light/main.css" />
     <script src="https://js.arcgis.com/4.33/"></script>
     <style>
-      /* Reset all padding, margin, and borders to create the "two squares" look */
+      /* Base styles for the page and containers */
       html,
       body {
         padding: 0;
         margin: 0;
         height: 100%;
         width: 100%;
-        display: flex; /* Use flexbox to easily center the content */
+        background-color: #f3f4f6; /* A light gray background */
+      }
+      .container {
+        display: flex; /* Use flexbox for horizontal layout */
         justify-content: center;
         align-items: center;
-        flex-direction: column;
-        background-color: #f3f4f6;
+        width: 100%;
+        height: 100vh; /* Make the container take up the full viewport height */
+        gap: 0; /* Remove gap between the squares */
       }
+      /* Map containers, each taking up half the width and fixed height */
       .map-container {
-        width: 512px;
+        width: 50%;
         height: 512px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border: 1px solid #d1d5db;
       }
     </style>
   </head>
   <body>
-    <!-- The two map containers with no extra styling or titles -->
-    <div id="view1Div" class="map-container"></div>
-    <div id="view2Div" class="map-container"></div>
+    <!-- The main container for the two maps -->
+    <div class="container">
+      <div id="view1Div" class="map-container"></div>
+      <div id="view2Div" class="map-container"></div>
+    </div>
 
     <!-- The JavaScript logic -->
     <script>
       require([
+        "esri/config", // New: to set the API key directly
         "esri/Map",
         "esri/views/MapView",
         "esri/layers/ImageryLayer",
         "esri/renderers/RasterStretchRenderer",
-        "esri/core/reactiveUtils",
-        "esri/identity/IdentityManager" // Added for authentication
-      ], (Map, MapView, ImageryLayer, RasterStretchRenderer, reactiveUtils, IdentityManager) => {
-        // This variable is a placeholder for your API key.
-        // The platform will automatically populate it.
-        const apiKey = "";
-        
-        // This is a necessary step for the canvas environment.
-        // It tells the ArcGIS SDK to use the provided API key for all requests.
-        IdentityManager.registerOAuthSession({
-          serverUrl: "https://www.arcgis.com/sharing",
-          token: apiKey
-        });
+        "esri/core/reactiveUtils"
+      ], (esriConfig, Map, MapView, ImageryLayer, RasterStretchRenderer, reactiveUtils) => {
+        // This is the new, more direct way to set the API key.
+        // It should prevent the map from getting stuck.
+        esriConfig.apiKey = "";
 
         // --- Setup the Satellite Map View ---
         const satelliteMap = new Map({
@@ -64,37 +66,32 @@
         const satelliteView = new MapView({
           container: "view1Div",
           map: satelliteMap,
-          center: [-118.805, 34.027],
+          center: [-118.805, 34.027], // Default to a California location
           zoom: 13,
-          // Add a loading indicator for better user experience
-          ui: { components: ["attribution"] }
+          ui: { components: [] } // Remove all UI components for a clean look
         });
 
         // --- Setup the DEM Heightmap View ---
-
-        // Define a RasterStretchRenderer to make the DEM grayscale.
         const demRenderer = new RasterStretchRenderer({
           stretchType: "min-max",
           colorRamp: {
             type: "multipart",
             stops: [{
               color: [0, 0, 0, 255],
-              value: 0
+              value: -100 // Black for low values
             }, {
               color: [255, 255, 255, 255],
-              value: 4000
+              value: 4000 // White for high values
             }]
           }
         });
 
-        // Create an ImageryLayer pointing to the World Elevation Terrain service.
         const demLayer = new ImageryLayer({
           url: "https://elevation.arcgis.com/arcgis/rest/services/WorldElevation/Terrain/ImageServer",
           renderer: demRenderer,
           format: "jpg"
         });
 
-        // Create the map and add the DEM layer
         const demMap = new Map({
           layers: [demLayer]
         });
@@ -104,16 +101,15 @@
           map: demMap,
           center: [-118.805, 34.027],
           zoom: 13,
-          ui: { components: ["attribution"] }
+          ui: { components: [] }
         });
 
         // --- Sync the two views ---
-
         Promise.all([
           satelliteView.when(),
           demView.when()
         ]).then(() => {
-          console.log("Both maps loaded and ready for synchronization.");
+          // Sync the viewpoints to move together
           const sync = (view1, view2) => {
             reactiveUtils.watch(
               () => view1.viewpoint,
@@ -127,7 +123,9 @@
           sync(satelliteView, demView);
           sync(demView, satelliteView);
         }).catch(error => {
-          console.error("An error occurred during map initialization:", error);
+          console.error("Map initialization failed:", error);
+          // Add a simple error message to the page
+          document.body.innerHTML = "<p style='text-align:center; color:red;'>Error loading maps. Please check the console for details.</p>";
         });
       });
     </script>
