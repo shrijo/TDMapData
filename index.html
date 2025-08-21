@@ -35,11 +35,29 @@
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         border: 1px solid #d1d5db;
       }
+      .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: rgba(255, 255, 255, 0.8);
+        z-index: 100;
+        font-family: 'Inter', sans-serif;
+        font-size: 1.5rem;
+        color: #1f2937;
+      }
     </style>
   </head>
   <body>
+    <!-- A simple loading overlay to indicate a blocking operation is in progress -->
+    <div id="loadingOverlay" class="loading-overlay">Loading maps...</div>
+    
     <!-- The main container for the two maps -->
-    <div class="container">
+    <div class="container" style="display:none;">
       <div id="view1Div" class="map-container"></div>
       <div id="view2Div" class="map-container"></div>
     </div>
@@ -47,15 +65,14 @@
     <!-- The JavaScript logic -->
     <script>
       require([
-        "esri/config", // New: to set the API key directly
+        "esri/config",
         "esri/Map",
         "esri/views/MapView",
         "esri/layers/ImageryLayer",
         "esri/renderers/RasterStretchRenderer",
         "esri/core/reactiveUtils"
       ], (esriConfig, Map, MapView, ImageryLayer, RasterStretchRenderer, reactiveUtils) => {
-        // This is the new, more direct way to set the API key.
-        // It should prevent the map from getting stuck.
+        // Set the API key directly
         esriConfig.apiKey = "";
 
         // --- Setup the Satellite Map View ---
@@ -66,9 +83,9 @@
         const satelliteView = new MapView({
           container: "view1Div",
           map: satelliteMap,
-          center: [-118.805, 34.027], // Default to a California location
+          center: [-118.805, 34.027],
           zoom: 13,
-          ui: { components: [] } // Remove all UI components for a clean look
+          ui: { components: [] }
         });
 
         // --- Setup the DEM Heightmap View ---
@@ -104,12 +121,20 @@
           ui: { components: [] }
         });
 
-        // --- Sync the two views ---
+        // --- Wait for everything to load, then sync ---
         Promise.all([
+          // We wait for the view to be created
           satelliteView.when(),
-          demView.when()
+          demView.when(),
+          // And we wait for the DEM layer to finish loading
+          demLayer.when()
         ]).then(() => {
-          // Sync the viewpoints to move together
+          console.log("All components loaded and ready for synchronization.");
+          
+          // Hide the loading overlay and show the maps
+          document.getElementById('loadingOverlay').style.display = 'none';
+          document.querySelector('.container').style.display = 'flex';
+
           const sync = (view1, view2) => {
             reactiveUtils.watch(
               () => view1.viewpoint,
@@ -124,8 +149,7 @@
           sync(demView, satelliteView);
         }).catch(error => {
           console.error("Map initialization failed:", error);
-          // Add a simple error message to the page
-          document.body.innerHTML = "<p style='text-align:center; color:red;'>Error loading maps. Please check the console for details.</p>";
+          document.getElementById('loadingOverlay').innerHTML = "Error loading maps. Please check the console.";
         });
       });
     </script>
