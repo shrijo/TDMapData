@@ -6,71 +6,56 @@
     <title>Two Synced Maps</title>
     <!--
       Load the ArcGIS Maps SDK for JavaScript from CDN.
-      We are using version 4.33 which is the latest as of August 2025.
+      Using version 4.33 which is the latest as of August 2025.
     -->
     <link rel="stylesheet" href="https://js.arcgis.com/4.33/esri/themes/light/main.css" />
     <script src="https://js.arcgis.com/4.33/"></script>
     <style>
+      /* Reset all padding, margin, and borders to create the "two squares" look */
       html,
       body {
         padding: 0;
         margin: 0;
         height: 100%;
         width: 100%;
-        font-family: 'Inter', sans-serif;
+        display: flex; /* Use flexbox to easily center the content */
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
         background-color: #f3f4f6;
       }
-      .container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        width: 100vw;
-        gap: 20px;
-      }
-      .map-wrapper {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
-      }
       .map-container {
-        border: 2px solid #e5e7eb;
-        border-radius: 12px;
-        overflow: hidden;
         width: 512px;
         height: 512px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      }
-      .map-title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: #1f2937;
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <div class="map-wrapper">
-        <div class="map-title">Satellite Imagery</div>
-        <div id="view1Div" class="map-container"></div>
-      </div>
-      <div class="map-wrapper">
-        <div class="map-title">Grayscale Heightmap (DEM)</div>
-        <div id="view2Div" class="map-container"></div>
-      </div>
-    </div>
+    <!-- The two map containers with no extra styling or titles -->
+    <div id="view1Div" class="map-container"></div>
+    <div id="view2Div" class="map-container"></div>
 
-    <!-- The JavaScript logic will be loaded here -->
+    <!-- The JavaScript logic -->
     <script>
       require([
         "esri/Map",
         "esri/views/MapView",
         "esri/layers/ImageryLayer",
         "esri/renderers/RasterStretchRenderer",
-        "esri/core/reactiveUtils"
-      ], (Map, MapView, ImageryLayer, RasterStretchRenderer, reactiveUtils) => {
+        "esri/core/reactiveUtils",
+        "esri/identity/IdentityManager" // Added for authentication
+      ], (Map, MapView, ImageryLayer, RasterStretchRenderer, reactiveUtils, IdentityManager) => {
+        // This variable is a placeholder for your API key.
+        // The platform will automatically populate it.
+        const apiKey = "";
+        
+        // This is a necessary step for the canvas environment.
+        // It tells the ArcGIS SDK to use the provided API key for all requests.
+        IdentityManager.registerOAuthSession({
+          serverUrl: "https://www.arcgis.com/sharing",
+          token: apiKey
+        });
+
         // --- Setup the Satellite Map View ---
         const satelliteMap = new Map({
           basemap: "satellite"
@@ -79,36 +64,34 @@
         const satelliteView = new MapView({
           container: "view1Div",
           map: satelliteMap,
-          center: [-118.805, 34.027], // A good default location for demonstration
-          zoom: 13
+          center: [-118.805, 34.027],
+          zoom: 13,
+          // Add a loading indicator for better user experience
+          ui: { components: ["attribution"] }
         });
 
         // --- Setup the DEM Heightmap View ---
 
         // Define a RasterStretchRenderer to make the DEM grayscale.
-        // It stretches the pixel values between a min and max to a color ramp.
         const demRenderer = new RasterStretchRenderer({
           stretchType: "min-max",
-          // The color ramp is an array of objects representing stops for the color.
-          // In this case, we create a simple grayscale ramp from black to white.
           colorRamp: {
-            type: "multipart", // Indicates a color ramp with multiple stops
+            type: "multipart",
             stops: [{
-              color: [0, 0, 0, 255], // Black at the lowest elevation
-              value: -100 // Example minimum value
+              color: [0, 0, 0, 255],
+              value: 0
             }, {
-              color: [255, 255, 255, 255], // White at the highest elevation
-              value: 4000 // Example maximum value
+              color: [255, 255, 255, 255],
+              value: 4000
             }]
           }
         });
 
         // Create an ImageryLayer pointing to the World Elevation Terrain service.
-        // This service provides the raw elevation data.
         const demLayer = new ImageryLayer({
           url: "https://elevation.arcgis.com/arcgis/rest/services/WorldElevation/Terrain/ImageServer",
-          renderer: demRenderer, // Apply the grayscale renderer
-          format: "jpg" // A standard format for the imagery
+          renderer: demRenderer,
+          format: "jpg"
         });
 
         // Create the map and add the DEM layer
@@ -120,32 +103,31 @@
           container: "view2Div",
           map: demMap,
           center: [-118.805, 34.027],
-          zoom: 13
+          zoom: 13,
+          ui: { components: ["attribution"] }
         });
 
         // --- Sync the two views ---
 
-        // Wait for both views to load completely before setting up the synchronization.
         Promise.all([
           satelliteView.when(),
           demView.when()
         ]).then(() => {
-          // This function synchronizes the two views.
-          // It watches for changes in the viewpoint of one view and applies
-          // that same viewpoint to the other view, creating a smooth sync.
+          console.log("Both maps loaded and ready for synchronization.");
           const sync = (view1, view2) => {
             reactiveUtils.watch(
               () => view1.viewpoint,
               (viewpoint) => {
                 view2.viewpoint = viewpoint;
               },
-              { deep: true } // 'deep: true' ensures the watcher triggers on sub-property changes (e.g., center)
+              { deep: true }
             );
           };
 
-          // Synchronize both views to move together
           sync(satelliteView, demView);
           sync(demView, satelliteView);
+        }).catch(error => {
+          console.error("An error occurred during map initialization:", error);
         });
       });
     </script>
