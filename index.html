@@ -87,55 +87,45 @@
             zoomControl: false
         });
         
-        // Right panel - Try Stamen Terrain first (more reliable)
+        // Right panel - RGB-encoded height data (NOT relief visualizations)
         map2 = L.map('elevation-view', {
             center: currentCenter,
             zoom: currentZoom,
             zoomControl: false
         });
         
-        // First try a basic working terrain layer to test
-        const workingTerrain = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.png', {
-            attribution: 'Stamen Terrain',
-            maxZoom: 14,
-            subdomains: ['a', 'b', 'c', 'd']
+        // AWS Terrarium RGB tiles - height encoded in RGB values
+        const terrarium = L.tileLayer('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', {
+            attribution: 'Height data: AWS Terrarium RGB',
+            maxZoom: 15
         });
         
-        workingTerrain.on('tileload', function() {
-            console.log('Stamen terrain loaded - now switching to height data...');
-            // Once we confirm terrain works, switch to height data
-            setTimeout(() => {
-                map2.removeLayer(workingTerrain);
+        terrarium.on('tileerror', function() {
+            console.log('AWS Terrarium failed, trying Mapzen RGB...');
+            map2.removeLayer(terrarium);
+            
+            // Mapzen Terrarium format (same RGB encoding)
+            const mapzen = L.tileLayer('https://tile.mapzen.com/mapzen/terrain/v1/terrarium/{z}/{x}/{y}.png', {
+                attribution: 'Height data: Mapzen Terrarium RGB',
+                maxZoom: 14
+            });
+            
+            mapzen.on('tileerror', function() {
+                console.log('Mapzen also failed, trying direct SRTM RGB...');
+                map2.removeLayer(mapzen);
                 
-                // Try simpler elevation service
-                const elevationLayer = L.tileLayer('https://cloud.maptiler.com/tiles/terrain-rgb/{z}/{x}/{y}.png', {
-                    attribution: 'MapTiler Height Data',
-                    maxZoom: 12
-                });
-                
-                elevationLayer.on('tileerror', function() {
-                    console.log('Height tiles failed - using grayscale conversion');
-                    // Fallback: use regular terrain but convert to grayscale
-                    map2.removeLayer(elevationLayer);
-                    const grayTerrain = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.png', {
-                        attribution: 'Terrain as heightmap',
-                        maxZoom: 14,
-                        subdomains: ['a', 'b', 'c', 'd'],
-                        className: 'grayscale-filter'
-                    });
-                    grayTerrain.addTo(map2);
-                });
-                
-                elevationLayer.addTo(map2);
-            }, 2000);
+                // Try direct SRTM as RGB (if available)
+                document.getElementById('elevation-view').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:16px;text-align:center;padding:20px;">RGB Height tiles failed<br><br>Need RGB-encoded elevation data, not relief visualizations<br><br>Height = (R×256 + G + B/256) - 32768</div>';
+            });
+            
+            mapzen.addTo(map2);
         });
         
-        workingTerrain.on('tileerror', function() {
-            console.log('All tile services failed - check network/CORS');
-            document.getElementById('elevation-view').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:16px;text-align:center;">Tile services blocked<br>Check console for errors</div>';
+        terrarium.on('tileload', function() {
+            console.log('RGB height data loaded - decode with: Height = (R×256 + G + B/256) - 32768');
         });
         
-        workingTerrain.addTo(map2);
+        terrarium.addTo(map2);
         
         // Sync the maps
         let isSyncing = false;
