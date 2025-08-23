@@ -93,44 +93,21 @@
         maxNativeZoom: 19
     }).addTo(satelliteMap);
 
-    // ESRI Terrain (Elevation) Base - This provides actual elevation data encoded in colors
-    // Using ESRI's Terrain basemap which includes elevation-coded colors
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 13,
-        maxNativeZoom: 13
-    }).addTo(demMap);
-
-    // Alternative: Use USGS National Map Elevation services for true DEM heightmap
-    // This provides actual height values encoded in the imagery
-    L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 16,
-        opacity: 0
-    }).addTo(demMap);
-
-    // Add NASA SRTM colored elevation (true heightmap with color-coded elevations)
-    // Each color represents a specific elevation range
-    L.tileLayer('https://tiles.arcgis.com/tiles/C8EMgrsFcRFL6LrL/arcgis/rest/services/ETOPO1_Global_Relief_Model_Color_Shaded_Relief/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 10,
-        maxNativeZoom: 10,
-        opacity: 0.9
-    }).addTo(demMap);
-
-    // Alternative DEM source - Mapbox Terrain RGB (encodes elevation in RGB values)
-    // Uncomment to use - requires decoding RGB to elevation: height = -10000 + ((R * 256 * 256 + G * 256 + B) * 0.1)
-    /*
-    L.tileLayer('https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=YOUR_MAPBOX_TOKEN', {
+    // ESRI WorldElevation/TopoBathy Image Service - True heightmap with elevation encoded in pixel values
+    // This is the actual DEM heightmap where colors represent real elevation values
+    L.tileLayer('https://elevation.arcgis.com/arcgis/rest/services/WorldElevation/TopoBathy/ImageServer/tile/{z}/{y}/{x}', {
         maxZoom: 15,
-        tileSize: 256
+        maxNativeZoom: 15
+    }).addTo(demMap);
+
+    // Alternative: ESRI Terrain3D ImageServer - Another true elevation service
+    // Uncomment if the above doesn't work or to try this alternative
+    /*
+    L.tileLayer('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/TopoBathy3D/ImageServer/tile/{z}/{y}/{x}', {
+        maxZoom: 15,
+        maxNativeZoom: 15
     }).addTo(demMap);
     */
-
-    // ESRI World Elevation 3D service - provides elevation as a service
-    // This is a true DEM where pixel values represent actual elevation
-    L.tileLayer('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer/tile/{z}/{y}/{x}', {
-        maxZoom: 15,
-        maxNativeZoom: 15,
-        opacity: 1
-    }).addTo(demMap);
 
     // Sync state
     let programmaticMove = false;
@@ -198,15 +175,6 @@
     // Enable scroll wheel zoom
     satelliteMap.scrollWheelZoom.enable();
     demMap.scrollWheelZoom.enable();
-
-    // Optional: Click handler to get elevation data at a point
-    // This would require additional API calls to ESRI's elevation service
-    demMap.on('click', function(e) {
-        // Example elevation query endpoint (requires additional implementation):
-        // https://elevation.arcgis.com/arcgis/rest/services/WorldElevation/Terrain/ImageServer/identify
-        console.log('Clicked at:', e.latlng);
-        // In a full implementation, you would query the elevation service here
-    });
 </script>
 ```
 
