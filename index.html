@@ -20,42 +20,81 @@
     }
     
     body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        background: #1a1a1a;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+        background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+        color: white;
+        overflow: hidden;
     }
     
     .header {
-        background: linear-gradient(135deg, #0B3D91 0%, #1F4E79 100%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 15px 20px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        padding: 20px 25px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100%" height="100%" fill="url(%23grid)"/></svg>');
+        pointer-events: none;
     }
     
     .header h1 {
-        font-size: 24px;
-        font-weight: 300;
+        font-size: 28px;
+        font-weight: 700;
         margin: 0;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 15px;
+        position: relative;
+        z-index: 1;
+        background: linear-gradient(135deg, #ffffff, #e0e7ff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
     
-    .nasa-logo {
-        width: 30px;
-        height: 30px;
-        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23FC3D21"/><path d="M20 50 Q50 20 80 50 Q50 80 20 50" fill="white"/><text x="50" y="55" text-anchor="middle" fill="%23FC3D21" font-size="12" font-weight="bold">NASA</text></svg>') no-repeat center/contain;
+    .mapbox-logo {
+        width: 35px;
+        height: 35px;
+        background: linear-gradient(135deg, #4264fb 0%, #00d4aa 100%);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 14px;
+        color: white;
+        box-shadow: 0 4px 15px rgba(66, 100, 251, 0.4);
     }
     
     .container {
         display: flex;
-        height: calc(100vh - 70px);
+        height: calc(100vh - 88px);
         position: relative;
+        background: radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.1), transparent),
+                    radial-gradient(circle at 80% 50%, rgba(255, 119, 198, 0.1), transparent),
+                    radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.1), transparent);
     }
     
     .map-panel {
         flex: 1;
         position: relative;
-        border-right: 2px solid #333;
+        border-right: 3px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(20px);
+        transition: all 0.3s ease;
+    }
+    
+    .map-panel:hover {
+        border-right-color: rgba(102, 126, 234, 0.5);
+        transform: scale(1.001);
     }
     
     .map-panel:last-child {
@@ -65,61 +104,101 @@
     .map {
         width: 100%;
         height: 100%;
+        border-radius: 0;
+        overflow: hidden;
     }
     
     .map-title {
         position: absolute;
-        top: 15px;
-        left: 15px;
-        background: rgba(0, 0, 0, 0.85);
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
         color: white;
-        padding: 8px 15px;
-        border-radius: 6px;
+        padding: 12px 20px;
+        border-radius: 12px;
         z-index: 1000;
-        font-size: 14px;
-        font-weight: 500;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 16px;
+        font-weight: 600;
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+        transform: translateY(0);
+    }
+    
+    .map-title:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+        background: rgba(0, 0, 0, 0.9);
     }
     
     .controls {
         position: absolute;
-        top: 15px;
-        right: 15px;
+        top: 20px;
+        right: 20px;
         z-index: 1000;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 15px;
     }
     
     .control-group {
-        background: rgba(0, 0, 0, 0.85);
-        padding: 10px;
-        border-radius: 6px;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(0, 0, 0, 0.8);
+        padding: 16px 20px;
+        border-radius: 16px;
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+        transform: translateY(0);
+    }
+    
+    .control-group:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+        background: rgba(0, 0, 0, 0.9);
+        border-color: rgba(102, 126, 234, 0.4);
     }
     
     .control-group label {
-        color: white;
-        font-size: 12px;
-        margin-bottom: 5px;
+        color: #e0e7ff;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 8px;
         display: block;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
     
     .control-group select {
-        background: rgba(255, 255, 255, 0.1);
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
         color: white;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        border-radius: 4px;
-        padding: 5px;
-        font-size: 12px;
-        width: 150px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        width: 180px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .control-group select:hover {
+        border-color: rgba(102, 126, 234, 0.6);
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%);
+        transform: scale(1.02);
+    }
+    
+    .control-group select:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
     }
     
     .control-group select option {
-        background: #333;
+        background: #1a1a2e;
         color: white;
+        padding: 8px;
     }
     
     .elevation-info {
@@ -150,29 +229,44 @@
     
     .elevation-legend {
         position: absolute;
-        bottom: 60px;
-        right: 15px;
-        background: rgba(0, 0, 0, 0.85);
+        bottom: 80px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
         color: white;
-        padding: 10px;
-        border-radius: 6px;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        font-size: 11px;
+        padding: 16px 20px;
+        border-radius: 16px;
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        font-size: 12px;
         z-index: 1000;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .elevation-legend:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+        background: rgba(0, 0, 0, 0.9);
     }
     
     .legend-item {
         display: flex;
         align-items: center;
-        margin: 2px 0;
+        margin: 4px 0;
+        transition: all 0.2s ease;
+    }
+    
+    .legend-item:hover {
+        transform: translateX(4px);
     }
     
     .legend-color {
-        width: 15px;
-        height: 10px;
-        margin-right: 5px;
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        width: 18px;
+        height: 12px;
+        margin-right: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 3px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
         position: absolute;
         top: 50%;
@@ -237,81 +331,18 @@
 
 </head>
 <body>
-    <div class="header">
-        <h1>
-            <div class="nasa-logo"></div>
-            NASA Split View Terrain Visualization
-        </h1>
-    </div>
+    <div class="container">
+        <div class="map-panel">
+            <div id="satellite-map" class="map"></div>
+        </div>
 
 ```
-<div class="container">
-    <div class="map-panel">
-        <div id="satellite-map" class="map"></div>
-        <div class="map-title">🛰️ NASA Satellite Imagery</div>
-    </div>
-    
     <div class="sync-indicator"></div>
     
     <div class="map-panel">
         <div id="elevation-map" class="map"></div>
-        <div class="map-title">🏔️ DEM Heightmap Visualization</div>
-        
-        <div class="controls">
-            <div class="control-group">
-                <label>Satellite Layer:</label>
-                <select id="satellite-layer-select">
-                    <option value="modis">MODIS True Color</option>
-                    <option value="viirs">VIIRS True Color</option>
-                    <option value="landsat">Landsat 8</option>
-                    <option value="bluemarble">Blue Marble</option>
-                </select>
-            </div>
-            
-            <div class="control-group">
-                <label>Elevation Style:</label>
-                <select id="elevation-style-select">
-                    <option value="mapbox_rgb">Mapbox DEM (RGB)</option>
-                    <option value="custom_dem">Custom Heightmap</option>
-                    <option value="terrain_color">Terrarium DEM</option>
-                    <option value="hillshade">Hillshade</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="elevation-legend" id="elevation-legend">
-            <div style="font-weight: bold; margin-bottom: 5px;">Elevation</div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #0064FF;"></div>
-                <span>< 0m (Sea Level)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #228B22;"></div>
-                <span>0-500m (Low)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #DAA520;"></div>
-                <span>500-1500m (Medium)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #8B4513;"></div>
-                <span>1500-3000m (High)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #FFFFFF;"></div>
-                <span>> 3000m (Peaks)</span>
-            </div>
-        </div>
-        
-        <div class="elevation-info" id="elevation-info">
-            <div>Click on the map to get elevation data</div>
-            <div id="coordinates"></div>
-            <div id="elevation-value"></div>
-        </div>
     </div>
 </div>
-
-<div class="loading" id="loading">Loading elevation data...</div>
 
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
@@ -325,38 +356,51 @@
 </script>
 
 <script>
-    // NASA GIBS tile layers
-    const nasaLayers = {
-        modis: {
-            url: 'https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/2023-08-15/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+    // Mapbox tile layers
+    const mapboxLayers = {
+        satellite: {
+            url: 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoidGVzdCIsImEiOiJjazJsMmRhbzExbDJzM3FveTZhd2FxZmE1In0.test',
             options: {
-                subdomains: ['a', 'b', 'c'],
-                attribution: '© NASA GIBS - MODIS Terra',
-                maxZoom: 9
+                attribution: '© Mapbox © OpenStreetMap',
+                maxZoom: 22,
+                tileSize: 512,
+                zoomOffset: -1
             }
         },
-        viirs: {
-            url: 'https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/2023-08-15/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+        'satellite-streets': {
+            url: 'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoidGVzdCIsImEiOiJjazJsMmRhbzExbDJzM3FveTZhd2FxZmE1In0.test',
             options: {
-                subdomains: ['a', 'b', 'c'],
-                attribution: '© NASA GIBS - VIIRS',
-                maxZoom: 9
+                attribution: '© Mapbox © OpenStreetMap',
+                maxZoom: 22,
+                tileSize: 512,
+                zoomOffset: -1
             }
         },
-        landsat: {
-            url: 'https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/Landsat_WELD_CorrectedReflectance_TrueColor_Global_Annual/default/2010-01-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.jpg',
+        outdoors: {
+            url: 'https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoidGVzdCIsImEiOiJjazJsMmRhbzExbDJzM3FveTZhd2FxZmE1In0.test',
             options: {
-                subdomains: ['a', 'b', 'c'],
-                attribution: '© NASA GIBS - Landsat',
-                maxZoom: 7
+                attribution: '© Mapbox © OpenStreetMap',
+                maxZoom: 22,
+                tileSize: 512,
+                zoomOffset: -1
             }
         },
-        bluemarble: {
-            url: 'https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/2004-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg',
+        light: {
+            url: 'https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoidGVzdCIsImEiOiJjazJsMmRhbzExbDJzM3FveTZhd2FxZmE1In0.test',
             options: {
-                subdomains: ['a', 'b', 'c'],
-                attribution: '© NASA GIBS - Blue Marble',
-                maxZoom: 8
+                attribution: '© Mapbox © OpenStreetMap',
+                maxZoom: 22,
+                tileSize: 512,
+                zoomOffset: -1
+            }
+        },
+        dark: {
+            url: 'https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoidGVzdCIsImEiOiJjazJsMmRhbzExbDJzM3FveTZhd2FxZmE1In0.test',
+            options: {
+                attribution: '© Mapbox © OpenStreetMap',
+                maxZoom: 22,
+                tileSize: 512,
+                zoomOffset: -1
             }
         }
     };
@@ -409,8 +453,8 @@
     });
 
     // Add initial layers
-    let currentSatelliteLayer = L.tileLayer(nasaLayers.modis.url, nasaLayers.modis.options).addTo(satelliteMap);
-    let currentElevationLayer = createMapboxDEMLayer().addTo(elevationMap);
+    let currentSatelliteLayer = L.tileLayer(mapboxLayers.satellite.url, mapboxLayers.satellite.options).addTo(satelliteMap);
+    let currentElevationLayer = createCustomDEMLayer().addTo(elevationMap);
 
     // Custom Mapbox DEM layer with RGB decoding
     function createMapboxDEMLayer() {
@@ -531,14 +575,14 @@
     elevationMap.sync(satelliteMap, {syncCursor: true});
 
     // Layer switching functionality
-    document.getElementById('satellite-layer-select').addEventListener('change', function(e) {
+    document.getElementById('satellite-layer-select')?.addEventListener('change', function(e) {
         const selectedLayer = e.target.value;
         satelliteMap.removeLayer(currentSatelliteLayer);
-        currentSatelliteLayer = L.tileLayer(nasaLayers[selectedLayer].url, nasaLayers[selectedLayer].options);
+        currentSatelliteLayer = L.tileLayer(mapboxLayers[selectedLayer].url, mapboxLayers[selectedLayer].options);
         satelliteMap.addLayer(currentSatelliteLayer);
     });
 
-    document.getElementById('elevation-style-select').addEventListener('change', function(e) {
+    document.getElementById('elevation-style-select')?.addEventListener('change', function(e) {
         const selectedStyle = e.target.value;
         elevationMap.removeLayer(currentElevationLayer);
         
@@ -628,34 +672,37 @@
         const coordsElement = document.getElementById('coordinates');
         const elevationElement = document.getElementById('elevation-value');
 
-        // Update coordinates immediately
-        coordsElement.textContent = `📍 ${elevationService.formatCoordinates(e.latlng.lat, e.latlng.lng)}`;
-        
-        // Show loading state
-        loading.style.display = 'block';
-        elevationElement.textContent = '🏔️ Loading elevation...';
+        // Only proceed if elements exist
+        if (coordsElement && elevationElement && loading) {
+            // Update coordinates immediately
+            coordsElement.textContent = `📍 ${elevationService.formatCoordinates(e.latlng.lat, e.latlng.lng)}`;
+            
+            // Show loading state
+            loading.style.display = 'block';
+            elevationElement.textContent = '🏔️ Loading elevation...';
 
-        // Query elevation data
-        elevationService.getElevation(e.latlng.lat, e.latlng.lng)
-            .then(elevation => {
-                const elevationText = elevationService.formatElevation(elevation);
-                elevationElement.textContent = `🏔️ ${elevationText}`;
-                
-                // Update legend visibility based on current layer
-                const legend = document.getElementById('elevation-legend');
-                const currentLayer = document.getElementById('elevation-style-select').value;
-                if (currentLayer === 'custom_dem') {
-                    legend.style.display = 'block';
-                } else {
-                    legend.style.display = 'none';
-                }
-            })
-            .catch(error => {
-                elevationElement.textContent = '🏔️ Elevation data unavailable';
-            })
-            .finally(() => {
-                loading.style.display = 'none';
-            });
+            // Query elevation data
+            elevationService.getElevation(e.latlng.lat, e.latlng.lng)
+                .then(elevation => {
+                    const elevationText = elevationService.formatElevation(elevation);
+                    elevationElement.textContent = `🏔️ ${elevationText}`;
+                    
+                    // Update legend visibility based on current layer
+                    const legend = document.getElementById('elevation-legend');
+                    const currentLayer = document.getElementById('elevation-style-select')?.value;
+                    if (legend && currentLayer === 'custom_dem') {
+                        legend.style.display = 'block';
+                    } else if (legend) {
+                        legend.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    elevationElement.textContent = '🏔️ Elevation data unavailable';
+                })
+                .finally(() => {
+                    loading.style.display = 'none';
+                });
+        }
 
         // Add marker to both maps
         const markerIcon = L.divIcon({
@@ -702,25 +749,7 @@
         {name: 'Mount Fuji', coords: [35.3606, 138.7274], zoom: 11}
     ];
 
-    // Add location shortcuts
-    function addLocationShortcuts() {
-        const controlGroup = document.createElement('div');
-        controlGroup.className = 'control-group';
-        controlGroup.innerHTML = `
-            <label>Quick Locations:</label>
-            <select id="location-select">
-                <option value="">Choose location...</option>
-                ${interestingLocations.map((loc, i) => 
-                    `<option value="${i}">${loc.name}</option>`
-                ).join('')}
-            </select>
-        `;
-        
-        document.querySelector('.controls').appendChild(controlGroup);
-
-        document.getElementById('location-select').addEventListener('change', function(e) {
-            const index = parseInt(e.target.value);
-            if (!isNaN(index)) {
+    console.log('Mapbox Split View Terrain Visualization loaded successfully!'); {
                 const location = interestingLocations[index];
                 satelliteMap.setView(location.coords, location.zoom);
                 // Reset selection
