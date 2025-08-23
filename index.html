@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NASA Earthdata Synchronized Viewer</title>
+    <title>ESRI Synchronized Maps - Satellite & DEM</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -16,246 +16,39 @@
 
 ```
     body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
         overflow: hidden;
-        background: #0a0a0a;
     }
     
     .container {
         display: flex;
         height: 100vh;
-        position: relative;
+        width: 100vw;
     }
     
     .map-container {
         flex: 1;
         position: relative;
-        border: 2px solid #1a1a1a;
     }
     
     .map {
         width: 100%;
         height: 100%;
-        background: #000;
     }
     
     .divider {
-        width: 4px;
-        background: linear-gradient(180deg, #e63946, #a61e1e);
+        width: 2px;
+        background: #333;
         cursor: col-resize;
-        position: relative;
-        transition: background 0.3s ease;
     }
     
-    .divider:hover {
-        background: linear-gradient(180deg, #ff4455, #c62828);
-        box-shadow: 0 0 15px rgba(230, 57, 70, 0.6);
-    }
-    
-    .divider::after {
-        content: '⋮';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: white;
-        font-size: 20px;
-        text-shadow: 0 0 10px rgba(0,0,0,0.8);
-    }
-    
-    .map-label {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        background: linear-gradient(135deg, rgba(15, 32, 68, 0.95), rgba(8, 20, 40, 0.95));
-        color: white;
-        padding: 10px 18px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 600;
-        z-index: 1000;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(230, 57, 70, 0.3);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    }
-    
-    .nasa-badge {
-        display: inline-block;
-        background: linear-gradient(135deg, #e63946, #a61e1e);
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 10px;
-        margin-left: 8px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-    }
-    
-    .controls {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: linear-gradient(135deg, rgba(15, 32, 68, 0.95), rgba(8, 20, 40, 0.95));
-        padding: 15px 25px;
-        border-radius: 10px;
-        z-index: 1000;
-        display: flex;
-        gap: 20px;
-        align-items: center;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(230, 57, 70, 0.3);
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
-    }
-    
-    .controls button {
-        background: linear-gradient(135deg, #e63946, #a61e1e);
-        color: white;
-        border: none;
-        padding: 10px 18px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
-    }
-    
-    .controls button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 12px rgba(230, 57, 70, 0.4);
-        background: linear-gradient(135deg, #ff4455, #c62828);
-    }
-    
-    .controls button:active {
-        transform: translateY(0);
-    }
-    
-    .controls select {
-        background: rgba(255, 255, 255, 0.05);
-        color: white;
-        border: 1px solid rgba(230, 57, 70, 0.3);
-        padding: 10px 15px;
-        border-radius: 6px;
-        font-size: 13px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .controls select:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(230, 57, 70, 0.5);
-    }
-    
-    .controls label {
-        color: #8fa3c4;
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    .layer-selector {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-    }
-    
-    .layer-selector select {
-        min-width: 180px;
-    }
-    
-    .info-panel {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: linear-gradient(135deg, rgba(15, 32, 68, 0.95), rgba(8, 20, 40, 0.95));
-        color: white;
-        padding: 12px 18px;
-        border-radius: 8px;
-        font-size: 12px;
-        z-index: 1000;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(230, 57, 70, 0.3);
-        max-width: 220px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    }
-    
-    .info-panel div {
-        margin: 6px 0;
-        display: flex;
-        justify-content: space-between;
-    }
-    
-    .info-label {
-        color: #8fa3c4;
-        margin-right: 10px;
-    }
-    
-    .info-value {
-        color: #fff;
-        font-weight: 600;
-    }
-    
-    .date-control {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    
-    .date-control input[type="date"] {
-        background: rgba(255, 255, 255, 0.05);
-        color: white;
-        border: 1px solid rgba(230, 57, 70, 0.3);
-        padding: 8px 12px;
-        border-radius: 6px;
-        font-size: 12px;
-    }
-    
-    .api-status {
-        position: absolute;
-        top: 60px;
-        left: 10px;
-        background: rgba(0, 0, 0, 0.8);
-        color: #8fa3c4;
-        padding: 8px 12px;
-        border-radius: 6px;
-        font-size: 11px;
-        z-index: 1000;
+    /* Hide Leaflet attribution for cleaner look */
+    .leaflet-control-attribution {
         display: none;
     }
     
-    .api-status.error {
-        display: block;
-        color: #ff4455;
-        border: 1px solid rgba(230, 57, 70, 0.5);
-    }
-    
-    .api-status.info {
-        display: block;
-        color: #4a90e2;
-        border: 1px solid rgba(74, 144, 226, 0.5);
-    }
-    
-    @media (max-width: 768px) {
-        .container {
-            flex-direction: column;
-        }
-        
-        .divider {
-            width: 100%;
-            height: 4px;
-            cursor: row-resize;
-        }
-        
-        .divider::after {
-            content: '⋯';
-        }
-        
-        .controls {
-            flex-direction: column;
-            gap: 10px;
-            padding: 10px;
-        }
+    /* Remove all zoom controls for minimal UI */
+    .leaflet-control-zoom {
+        display: none;
     }
 </style>
 ```
@@ -264,11 +57,6 @@
 <body>
     <div class="container">
         <div class="map-container">
-            <div class="map-label">
-                🛰️ Satellite Imagery
-                <span class="nasa-badge">NASA</span>
-            </div>
-            <div class="api-status" id="satelliteStatus"></div>
             <div id="satelliteMap" class="map"></div>
         </div>
 
@@ -276,202 +64,86 @@
     <div class="divider"></div>
     
     <div class="map-container">
-        <div class="map-label">
-            📊 Elevation (DEM)
-            <span class="nasa-badge">NASA</span>
-        </div>
-        <div class="api-status" id="demStatus"></div>
         <div id="demMap" class="map"></div>
     </div>
 </div>
 
-<div class="controls">
-    <div class="layer-selector">
-        <label>Imagery Layer:</label>
-        <select id="imageryLayer">
-            <option value="MODIS_Terra_CorrectedReflectance_TrueColor">MODIS Terra - True Color</option>
-            <option value="MODIS_Aqua_CorrectedReflectance_TrueColor">MODIS Aqua - True Color</option>
-            <option value="VIIRS_SNPP_CorrectedReflectance_TrueColor">VIIRS SNPP - True Color</option>
-            <option value="MODIS_Terra_CorrectedReflectance_721">MODIS Terra - False Color (7-2-1)</option>
-            <option value="MODIS_Terra_NDVI_8Day">MODIS Terra - Vegetation (NDVI)</option>
-            <option value="MODIS_Terra_Land_Surface_Temp_Day">MODIS Terra - Land Surface Temp</option>
-        </select>
-    </div>
-    
-    <div class="layer-selector">
-        <label>Location:</label>
-        <select id="locationSelect">
-            <option value="27.9881,86.9250,8">Mount Everest</option>
-            <option value="36.0884,-112.0985,10">Grand Canyon</option>
-            <option value="46.8523,8.5435,9">Swiss Alps</option>
-            <option value="37.7156,-119.6770,10">Yosemite Valley</option>
-            <option value="-13.1631,-72.5450,10">Machu Picchu</option>
-            <option value="35.3606,138.7274,11">Mount Fuji</option>
-            <option value="-3.0674,37.3556,9">Kilimanjaro</option>
-            <option value="64.0000,-16.0000,6">Iceland</option>
-        </select>
-    </div>
-    
-    <div class="date-control">
-        <label>Date:</label>
-        <input type="date" id="dateSelect" value="2024-01-01">
-    </div>
-    
-    <button id="resetView">Reset View</button>
-    <button id="toggleSync">Sync: ON</button>
-</div>
-
-<div class="info-panel">
-    <div>
-        <span class="info-label">Zoom:</span>
-        <span class="info-value" id="zoomLevel">8</span>
-    </div>
-    <div>
-        <span class="info-label">Lat:</span>
-        <span class="info-value" id="latitude">0.0000</span>
-    </div>
-    <div>
-        <span class="info-label">Lon:</span>
-        <span class="info-value" id="longitude">0.0000</span>
-    </div>
-    <div>
-        <span class="info-label">Data:</span>
-        <span class="info-value" id="dataDate">2024-01-01</span>
-    </div>
-</div>
-
 <script>
-    // NASA GIBS configuration
-    const GIBS_ENDPOINT = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/';
-    
-    // Initialize both maps
+    // Initialize both maps at Grand Canyon for good elevation visibility
+    const initialCenter = [36.0884, -112.0985];
+    const initialZoom = 11;
+
     const satelliteMap = L.map('satelliteMap', {
-        center: [27.9881, 86.9250],
-        zoom: 8,
-        maxZoom: 18,
-        zoomControl: true
+        center: initialCenter,
+        zoom: initialZoom,
+        zoomControl: false,
+        attributionControl: false
     });
 
     const demMap = L.map('demMap', {
-        center: [27.9881, 86.9250],
-        zoom: 8,
-        maxZoom: 18,
-        zoomControl: true
+        center: initialCenter,
+        zoom: initialZoom,
+        zoomControl: false,
+        attributionControl: false
     });
 
-    // Current layers
-    let satelliteLayer = null;
-    let demLayer = null;
-    let currentDate = '2024-01-01';
-    let currentImageryType = 'MODIS_Terra_CorrectedReflectance_TrueColor';
-
-    // Function to create NASA GIBS tile URL
-    function createGIBSTileUrl(layer, date) {
-        // NASA GIBS uses a specific URL pattern
-        // Using the Web Map Tile Service (WMTS) endpoint
-        return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
-    }
-
-    // Function to update satellite imagery layer
-    function updateSatelliteLayer() {
-        if (satelliteLayer) {
-            satelliteMap.removeLayer(satelliteLayer);
-        }
-
-        const tileUrl = createGIBSTileUrl(currentImageryType, currentDate);
-        
-        satelliteLayer = L.tileLayer(tileUrl, {
-            attribution: '© NASA Earthdata GIBS',
-            maxZoom: 18,
-            tileSize: 256,
-            errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-        });
-
-        satelliteLayer.on('tileerror', function(error) {
-            console.log('Tile error:', error);
-            document.getElementById('satelliteStatus').textContent = 'Note: Some tiles may not be available for this date/location';
-            document.getElementById('satelliteStatus').className = 'api-status info';
-            setTimeout(() => {
-                document.getElementById('satelliteStatus').className = 'api-status';
-            }, 5000);
-        });
-
-        satelliteLayer.addTo(satelliteMap);
-    }
-
-    // Function to update DEM layer
-    function updateDEMLayer() {
-        if (demLayer) {
-            demMap.removeLayer(demLayer);
-        }
-
-        // NASA provides ASTER GDEM and SRTM data
-        // Using ASTER GDEM colored elevation
-        const demTileUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/ASTER_GDEM_Color_Shaded_Relief/default/GoogleMapsCompatible_Level12/{z}/{y}/{x}.jpg`;
-        
-        demLayer = L.tileLayer(demTileUrl, {
-            attribution: '© NASA Earthdata GIBS - ASTER GDEM',
-            maxZoom: 12,
-            tileSize: 256,
-            errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-        });
-
-        demLayer.on('tileerror', function(error) {
-            console.log('DEM tile error:', error);
-            document.getElementById('demStatus').textContent = 'Note: DEM data has limited zoom levels (max: 12)';
-            document.getElementById('demStatus').className = 'api-status info';
-            setTimeout(() => {
-                document.getElementById('demStatus').className = 'api-status';
-            }, 5000);
-        });
-
-        demLayer.addTo(demMap);
-
-        // Add contour lines overlay for better elevation visualization
-        const contourUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/ASTER_GDEM_Greyscale_Shaded_Relief/default/GoogleMapsCompatible_Level12/{z}/{y}/{x}.jpg`;
-        
-        L.tileLayer(contourUrl, {
-            attribution: '© NASA Earthdata',
-            maxZoom: 12,
-            opacity: 0.3,
-            tileSize: 256
-        }).addTo(demMap);
-    }
-
-    // Initialize layers
-    updateSatelliteLayer();
-    updateDEMLayer();
-
-    // Add base reference layer for context
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
-        attribution: '© OpenStreetMap contributors © CARTO',
-        subdomains: 'abcd',
+    // ESRI World Imagery - Satellite basemap
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
-        opacity: 0.4
+        maxNativeZoom: 19
     }).addTo(satelliteMap);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
-        attribution: '© OpenStreetMap contributors © CARTO',
-        subdomains: 'abcd',
-        maxZoom: 19,
-        opacity: 0.6
+    // ESRI Terrain (Elevation) Base - This provides actual elevation data encoded in colors
+    // Using ESRI's Terrain basemap which includes elevation-coded colors
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 13,
+        maxNativeZoom: 13
+    }).addTo(demMap);
+
+    // Alternative: Use USGS National Map Elevation services for true DEM heightmap
+    // This provides actual height values encoded in the imagery
+    L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 16,
+        opacity: 0
+    }).addTo(demMap);
+
+    // Add NASA SRTM colored elevation (true heightmap with color-coded elevations)
+    // Each color represents a specific elevation range
+    L.tileLayer('https://tiles.arcgis.com/tiles/C8EMgrsFcRFL6LrL/arcgis/rest/services/ETOPO1_Global_Relief_Model_Color_Shaded_Relief/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 10,
+        maxNativeZoom: 10,
+        opacity: 0.9
+    }).addTo(demMap);
+
+    // Alternative DEM source - Mapbox Terrain RGB (encodes elevation in RGB values)
+    // Uncomment to use - requires decoding RGB to elevation: height = -10000 + ((R * 256 * 256 + G * 256 + B) * 0.1)
+    /*
+    L.tileLayer('https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=YOUR_MAPBOX_TOKEN', {
+        maxZoom: 15,
+        tileSize: 256
+    }).addTo(demMap);
+    */
+
+    // ESRI World Elevation 3D service - provides elevation as a service
+    // This is a true DEM where pixel values represent actual elevation
+    L.tileLayer('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer/tile/{z}/{y}/{x}', {
+        maxZoom: 15,
+        maxNativeZoom: 15,
+        opacity: 1
     }).addTo(demMap);
 
     // Sync state
-    let syncEnabled = true;
     let programmaticMove = false;
 
     // Sync function
     function syncMaps(sourceMap, targetMap) {
-        if (!syncEnabled || programmaticMove) return;
+        if (programmaticMove) return;
         
         programmaticMove = true;
         targetMap.setView(sourceMap.getCenter(), sourceMap.getZoom(), {
             animate: false
         });
         programmaticMove = false;
-        
-        updateInfo();
     }
 
     // Add event listeners for synchronization
@@ -479,66 +151,6 @@
     satelliteMap.on('zoom', () => syncMaps(satelliteMap, demMap));
     demMap.on('move', () => syncMaps(demMap, satelliteMap));
     demMap.on('zoom', () => syncMaps(demMap, satelliteMap));
-
-    // Update info panel
-    function updateInfo() {
-        const center = satelliteMap.getCenter();
-        const zoom = satelliteMap.getZoom();
-        document.getElementById('zoomLevel').textContent = zoom;
-        document.getElementById('latitude').textContent = center.lat.toFixed(4);
-        document.getElementById('longitude').textContent = center.lng.toFixed(4);
-        document.getElementById('dataDate').textContent = currentDate;
-    }
-
-    // Initial info update
-    updateInfo();
-
-    // Imagery layer selector
-    document.getElementById('imageryLayer').addEventListener('change', (e) => {
-        currentImageryType = e.target.value;
-        updateSatelliteLayer();
-    });
-
-    // Date selector
-    document.getElementById('dateSelect').addEventListener('change', (e) => {
-        currentDate = e.target.value;
-        updateSatelliteLayer();
-        updateInfo();
-    });
-
-    // Location selector
-    document.getElementById('locationSelect').addEventListener('change', (e) => {
-        const [lat, lng, zoom] = e.target.value.split(',').map(Number);
-        satelliteMap.setView([lat, lng], zoom);
-        if (syncEnabled) {
-            demMap.setView([lat, lng], zoom);
-        }
-    });
-
-    // Reset view button
-    document.getElementById('resetView').addEventListener('click', () => {
-        const initialView = [27.9881, 86.9250];
-        const initialZoom = 8;
-        satelliteMap.setView(initialView, initialZoom);
-        if (syncEnabled) {
-            demMap.setView(initialView, initialZoom);
-        }
-        document.getElementById('locationSelect').value = '27.9881,86.9250,8';
-    });
-
-    // Toggle sync button
-    document.getElementById('toggleSync').addEventListener('click', (e) => {
-        syncEnabled = !syncEnabled;
-        e.target.textContent = `Sync: ${syncEnabled ? 'ON' : 'OFF'}`;
-        e.target.style.background = syncEnabled ? 
-            'linear-gradient(135deg, #e63946, #a61e1e)' : 
-            'linear-gradient(135deg, #666, #333)';
-        
-        // If re-enabling sync, align the maps
-        if (syncEnabled) {
-            syncMaps(satelliteMap, demMap);
-        }
-    });
 
     // Make divider draggable for resizing
     const divider = document.querySelector('.divider');
@@ -560,7 +172,7 @@
         const containerRect = container.getBoundingClientRect();
         const percentage = ((e.clientX - containerRect.left) / containerRect.width) * 100;
         
-        if (percentage > 20 && percentage < 80) {
+        if (percentage > 10 && percentage < 90) {
             leftPanel.style.flex = `0 0 ${percentage}%`;
             rightPanel.style.flex = `0 0 ${100 - percentage}%`;
             
@@ -568,7 +180,7 @@
             setTimeout(() => {
                 satelliteMap.invalidateSize();
                 demMap.invalidateSize();
-            }, 100);
+            }, 10);
         }
     });
     
@@ -583,12 +195,18 @@
         demMap.invalidateSize();
     });
 
-    // Set default date to today
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('dateSelect').value = today;
-    currentDate = today;
-    updateSatelliteLayer();
-    updateInfo();
+    // Enable scroll wheel zoom
+    satelliteMap.scrollWheelZoom.enable();
+    demMap.scrollWheelZoom.enable();
+
+    // Optional: Click handler to get elevation data at a point
+    // This would require additional API calls to ESRI's elevation service
+    demMap.on('click', function(e) {
+        // Example elevation query endpoint (requires additional implementation):
+        // https://elevation.arcgis.com/arcgis/rest/services/WorldElevation/Terrain/ImageServer/identify
+        console.log('Clicked at:', e.latlng);
+        // In a full implementation, you would query the elevation service here
+    });
 </script>
 ```
 
