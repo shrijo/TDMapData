@@ -4,7 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TouchDesigner Map Viewer</title>
+    <title>Synchronized Satellite & DEM Viewer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         * {
             margin: 0;
@@ -14,167 +16,363 @@
 
 ```
     body {
-        height: 100vh;
-        width: 100vw;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
         overflow: hidden;
-        background: #000;
+        background: #1a1a1a;
     }
     
-    .split-container {
+    .container {
         display: flex;
-        height: 100vh;
-        width: 100vw;
-    }
-    
-    .left-panel, .right-panel {
-        flex: 1;
         height: 100vh;
         position: relative;
     }
     
-    .map-view {
+    .map-container {
+        flex: 1;
+        position: relative;
+        border: 2px solid #333;
+    }
+    
+    .map {
         width: 100%;
         height: 100%;
-        cursor: grab;
     }
     
-    .map-view:active {
-        cursor: grabbing;
+    .divider {
+        width: 4px;
+        background: linear-gradient(180deg, #4a90e2, #357abd);
+        cursor: col-resize;
+        position: relative;
+        transition: background 0.3s ease;
     }
     
-    .grayscale-filter {
-        filter: grayscale(100%) contrast(150%) brightness(120%);
+    .divider:hover {
+        background: linear-gradient(180deg, #5ba0f2, #4587cd);
+        box-shadow: 0 0 10px rgba(74, 144, 226, 0.5);
+    }
+    
+    .divider::after {
+        content: '⋮';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 20px;
+        text-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    
+    .map-label {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        z-index: 1000;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    
+    .controls {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.85);
+        padding: 12px 20px;
+        border-radius: 8px;
+        z-index: 1000;
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    
+    .controls button {
+        background: linear-gradient(135deg, #4a90e2, #357abd);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    
+    .controls button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        background: linear-gradient(135deg, #5ba0f2, #4587cd);
+    }
+    
+    .controls button:active {
+        transform: translateY(0);
+    }
+    
+    .controls select {
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .controls select:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+    
+    .controls label {
+        color: #aaa;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    
+    .info-panel {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 6px;
+        font-size: 12px;
+        z-index: 1000;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        max-width: 200px;
+    }
+    
+    .info-panel div {
+        margin: 4px 0;
+    }
+    
+    .loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 14px;
+        z-index: 999;
+    }
+    
+    @media (max-width: 768px) {
+        .container {
+            flex-direction: column;
+        }
+        
+        .divider {
+            width: 100%;
+            height: 4px;
+            cursor: row-resize;
+        }
+        
+        .divider::after {
+            content: '⋯';
+        }
     }
 </style>
 ```
 
 </head>
 <body>
-    <div class="split-container">
-        <div class="left-panel">
-            <div id="satellite-view" class="map-view"></div>
+    <div class="container">
+        <div class="map-container">
+            <div class="map-label">🛰️ Satellite Imagery</div>
+            <div id="satelliteMap" class="map"></div>
         </div>
-        <div class="right-panel">
-            <div id="elevation-view" class="map-view"></div>
-        </div>
-    </div>
 
 ```
-<script>
-    let map1, map2;
-    let currentZoom = 10;
-    let currentCenter = [40.7128, -74.0060]; // NYC default
+    <div class="divider"></div>
     
-    // Initialize maps when Leaflet is ready
-    function initializeMaps() {
-        // Left panel - Satellite imagery
-        map1 = L.map('satellite-view', {
-            center: currentCenter,
-            zoom: currentZoom,
-            zoomControl: false
+    <div class="map-container">
+        <div class="map-label">📊 Elevation (DEM)</div>
+        <div id="demMap" class="map"></div>
+    </div>
+</div>
+
+<div class="controls">
+    <label>Location:</label>
+    <select id="locationSelect">
+        <option value="46.5197,-80.9531,8">Mount Everest</option>
+        <option value="36.0884,-112.0985,11">Grand Canyon</option>
+        <option value="46.8523,8.5435,10">Swiss Alps</option>
+        <option value="37.7156,-119.6770,11">Yosemite Valley</option>
+        <option value="-13.1631,-72.5450,11">Machu Picchu</option>
+        <option value="35.3606,138.7274,12">Mount Fuji</option>
+        <option value="27.1751,78.0421,15">Taj Mahal</option>
+        <option value="48.8584,2.2945,12">Paris</option>
+    </select>
+    <button id="resetView">Reset View</button>
+    <button id="toggleSync">Sync: ON</button>
+</div>
+
+<div class="info-panel">
+    <div id="zoomLevel">Zoom: 10</div>
+    <div id="centerCoords">Center: Loading...</div>
+</div>
+
+<script>
+    // Initialize both maps
+    const satelliteMap = L.map('satelliteMap', {
+        center: [46.8523, 8.5435],
+        zoom: 10,
+        zoomControl: true
+    });
+
+    const demMap = L.map('demMap', {
+        center: [46.8523, 8.5435],
+        zoom: 10,
+        zoomControl: true
+    });
+
+    // Add satellite imagery layer (using Esri World Imagery)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+        maxZoom: 19
+    }).addTo(satelliteMap);
+
+    // Add DEM/terrain layer with hillshade
+    L.tileLayer('https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://stamen.com/">Stamen Design</a>, &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
+        maxZoom: 18
+    }).addTo(demMap);
+
+    // Alternative: OpenTopoMap for better elevation visualization
+    L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap',
+        maxZoom: 17,
+        opacity: 0.7
+    }).addTo(demMap);
+
+    // Sync state
+    let syncEnabled = true;
+    let programmaticMove = false;
+
+    // Sync function
+    function syncMaps(sourceMap, targetMap) {
+        if (!syncEnabled || programmaticMove) return;
+        
+        programmaticMove = true;
+        targetMap.setView(sourceMap.getCenter(), sourceMap.getZoom(), {
+            animate: false
         });
+        programmaticMove = false;
         
-        // ESRI World Imagery for left side
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: '© Esri',
-            maxZoom: 19
-        }).addTo(map1);
+        updateInfo();
+    }
+
+    // Add event listeners for synchronization
+    satelliteMap.on('move', () => syncMaps(satelliteMap, demMap));
+    satelliteMap.on('zoom', () => syncMaps(satelliteMap, demMap));
+    demMap.on('move', () => syncMaps(demMap, satelliteMap));
+    demMap.on('zoom', () => syncMaps(demMap, satelliteMap));
+
+    // Update info panel
+    function updateInfo() {
+        const center = satelliteMap.getCenter();
+        const zoom = satelliteMap.getZoom();
+        document.getElementById('zoomLevel').textContent = `Zoom: ${zoom}`;
+        document.getElementById('centerCoords').textContent = `Center: ${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`;
+    }
+
+    // Initial info update
+    updateInfo();
+
+    // Location selector
+    document.getElementById('locationSelect').addEventListener('change', (e) => {
+        const [lat, lng, zoom] = e.target.value.split(',').map(Number);
+        satelliteMap.setView([lat, lng], zoom);
+        if (syncEnabled) {
+            demMap.setView([lat, lng], zoom);
+        }
+    });
+
+    // Reset view button
+    document.getElementById('resetView').addEventListener('click', () => {
+        const initialView = [46.8523, 8.5435];
+        const initialZoom = 10;
+        satelliteMap.setView(initialView, initialZoom);
+        if (syncEnabled) {
+            demMap.setView(initialView, initialZoom);
+        }
+    });
+
+    // Toggle sync button
+    document.getElementById('toggleSync').addEventListener('click', (e) => {
+        syncEnabled = !syncEnabled;
+        e.target.textContent = `Sync: ${syncEnabled ? 'ON' : 'OFF'}`;
+        e.target.style.background = syncEnabled ? 
+            'linear-gradient(135deg, #4a90e2, #357abd)' : 
+            'linear-gradient(135deg, #e24a4a, #bd3535)';
         
-        // Right panel - ESRI World Terrain Base (working terrain layer)
-        map2 = L.map('elevation-view', {
-            center: currentCenter,
-            zoom: currentZoom,
-            zoomControl: false
-        });
+        // If re-enabling sync, align the maps
+        if (syncEnabled) {
+            syncMaps(satelliteMap, demMap);
+        }
+    });
+
+    // Make divider draggable for resizing
+    const divider = document.querySelector('.divider');
+    const container = document.querySelector('.container');
+    const leftPanel = container.children[0];
+    const rightPanel = container.children[2];
+    
+    let isResizing = false;
+    
+    divider.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        document.body.style.cursor = 'col-resize';
+        e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
         
-        // Right panel - RGB-encoded height data (NOT relief visualizations)
-        map2 = L.map('elevation-view', {
-            center: currentCenter,
-            zoom: currentZoom,
-            zoomControl: false
-        });
+        const containerRect = container.getBoundingClientRect();
+        const percentage = ((e.clientX - containerRect.left) / containerRect.width) * 100;
         
-        // AWS Terrarium RGB tiles - height encoded in RGB values
-        const terrarium = L.tileLayer('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', {
-            attribution: 'Height data: AWS Terrarium RGB',
-            maxZoom: 15
-        });
-        
-        terrarium.on('tileerror', function() {
-            console.log('AWS Terrarium failed, trying Mapzen RGB...');
-            map2.removeLayer(terrarium);
+        if (percentage > 20 && percentage < 80) {
+            leftPanel.style.flex = `0 0 ${percentage}%`;
+            rightPanel.style.flex = `0 0 ${100 - percentage}%`;
             
-            // Mapzen Terrarium format (same RGB encoding)
-            const mapzen = L.tileLayer('https://tile.mapzen.com/mapzen/terrain/v1/terrarium/{z}/{x}/{y}.png', {
-                attribution: 'Height data: Mapzen Terrarium RGB',
-                maxZoom: 14
-            });
-            
-            mapzen.on('tileerror', function() {
-                console.log('Mapzen also failed, trying direct SRTM RGB...');
-                map2.removeLayer(mapzen);
-                
-                // Try direct SRTM as RGB (if available)
-                document.getElementById('elevation-view').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:16px;text-align:center;padding:20px;">RGB Height tiles failed<br><br>Need RGB-encoded elevation data, not relief visualizations<br><br>Height = (R×256 + G + B/256) - 32768</div>';
-            });
-            
-            mapzen.addTo(map2);
-        });
-        
-        terrarium.on('tileload', function() {
-            console.log('RGB height data loaded - decode with: Height = (R×256 + G + B/256) - 32768');
-        });
-        
-        terrarium.addTo(map2);
-        
-        // Sync the maps
-        let isSyncing = false;
-        
-        function syncMaps(sourceMap, targetMap) {
-            if (isSyncing) return;
-            isSyncing = true;
-            
-            const center = sourceMap.getCenter();
-            const zoom = sourceMap.getZoom();
-            
-            targetMap.setView(center, zoom);
-            
+            // Invalidate map sizes after resize
             setTimeout(() => {
-                isSyncing = false;
+                satelliteMap.invalidateSize();
+                demMap.invalidateSize();
             }, 100);
         }
-        
-        // Add sync event listeners
-        map1.on('moveend', () => syncMaps(map1, map2));
-        map1.on('zoomend', () => syncMaps(map1, map2));
-        map2.on('moveend', () => syncMaps(map2, map1));
-        map2.on('zoomend', () => syncMaps(map2, map1));
-    }
+    });
     
-    // Load Leaflet library
-    function loadLeaflet() {
-        // Add Leaflet CSS
-        const leafletCSS = document.createElement('link');
-        leafletCSS.rel = 'stylesheet';
-        leafletCSS.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(leafletCSS);
-        
-        // Add Leaflet JS
-        const leafletJS = document.createElement('script');
-        leafletJS.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        leafletJS.onload = function() {
-            initializeMaps();
-        };
-        leafletJS.onerror = function() {
-            // Fallback if Leaflet fails to load
-            document.getElementById('satellite-view').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:18px;">Network blocked - Leaflet library failed to load</div>';
-            document.getElementById('elevation-view').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:18px;">Use local server or enable external resources</div>';
-        };
-        document.head.appendChild(leafletJS);
-    }
-    
-    // Start loading
-    loadLeaflet();
+    document.addEventListener('mouseup', () => {
+        isResizing = false;
+        document.body.style.cursor = 'default';
+    });
+
+    // Add markers for interesting features (optional)
+    const addFeatureMarker = (lat, lng, title) => {
+        L.marker([lat, lng]).addTo(satelliteMap).bindPopup(title);
+        L.marker([lat, lng]).addTo(demMap).bindPopup(title);
+    };
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        satelliteMap.invalidateSize();
+        demMap.invalidateSize();
+    });
 </script>
 ```
 
