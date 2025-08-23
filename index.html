@@ -76,17 +76,17 @@
             maxZoom: 19
         }).addTo(map1);
         
-        // Right panel - ESRI Terrain3D imagery
+        // Right panel - ESRI World Terrain Base (working terrain layer)
         map2 = L.map('elevation-view', {
             center: currentCenter,
             zoom: currentZoom,
             zoomControl: false
         });
         
-        // ESRI Terrain3D layer for right side
-        L.tileLayer('https://tiles.arcgis.com/tiles/nGt4QxSblgDfeJn9/arcgis/rest/services/terrain3d/MapServer/tile/{z}/{y}/{x}', {
+        // ESRI World Terrain Base - this should work
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}', {
             attribution: '© Esri',
-            maxZoom: 16
+            maxZoom: 13
         }).addTo(map2);
         
         // Sync the maps
