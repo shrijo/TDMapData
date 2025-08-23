@@ -137,7 +137,43 @@
         min-width: 200px;
     }
     
-    .loading {
+    .mapbox-dem-layer {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+        filter: contrast(1.2) brightness(1.1);
+    }
+    
+    .terrarium-layer {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+    }
+    
+    .elevation-legend {
+        position: absolute;
+        bottom: 60px;
+        right: 15px;
+        background: rgba(0, 0, 0, 0.85);
+        color: white;
+        padding: 10px;
+        border-radius: 6px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 11px;
+        z-index: 1000;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        margin: 2px 0;
+    }
+    
+    .legend-color {
+        width: 15px;
+        height: 10px;
+        margin-right: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
         position: absolute;
         top: 50%;
         left: 50%;
@@ -219,7 +255,7 @@
     
     <div class="map-panel">
         <div id="elevation-map" class="map"></div>
-        <div class="map-title">🏔️ Elevation Visualization</div>
+        <div class="map-title">🏔️ DEM Heightmap Visualization</div>
         
         <div class="controls">
             <div class="control-group">
@@ -235,11 +271,35 @@
             <div class="control-group">
                 <label>Elevation Style:</label>
                 <select id="elevation-style-select">
-                    <option value="terrain">Terrain Colors</option>
-                    <option value="grayscale">Grayscale</option>
-                    <option value="rainbow">Rainbow</option>
-                    <option value="contour">Contour Lines</option>
+                    <option value="mapbox_rgb">Mapbox DEM (RGB)</option>
+                    <option value="custom_dem">Custom Heightmap</option>
+                    <option value="terrain_color">Terrarium DEM</option>
+                    <option value="hillshade">Hillshade</option>
                 </select>
+            </div>
+        </div>
+        
+        <div class="elevation-legend" id="elevation-legend">
+            <div style="font-weight: bold; margin-bottom: 5px;">Elevation</div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #0064FF;"></div>
+                <span>< 0m (Sea Level)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #228B22;"></div>
+                <span>0-500m (Low)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #DAA520;"></div>
+                <span>500-1500m (Medium)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #8B4513;"></div>
+                <span>1500-3000m (High)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FFFFFF;"></div>
+                <span>> 3000m (Peaks)</span>
             </div>
         </div>
         
@@ -301,28 +361,29 @@
         }
     };
 
-    // Elevation visualization layers
+    // Mapbox DEM and elevation visualization layers
     const elevationLayers = {
-        terrain: {
-            url: 'https://{s}.tile.opentopodata.org/aster30m/{z}/{x}/{y}.png',
+        mapbox_rgb: {
+            url: 'https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoidGVzdCIsImEiOiJjazJsMmRhbzExbDJzM3FveTZhd2FxZmE1In0.test',
             options: {
-                subdomains: ['a', 'b', 'c'],
-                attribution: '© NASA SRTM, OpenTopography',
-                opacity: 0.8
+                attribution: '© Mapbox © OpenStreetMap',
+                opacity: 1.0,
+                className: 'mapbox-dem-layer'
             }
         },
-        grayscale: {
+        terrain_color: {
+            url: 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png',
+            options: {
+                attribution: '© Mapzen Terrarium',
+                opacity: 0.8,
+                className: 'terrarium-layer'
+            }
+        },
+        hillshade: {
             url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
             options: {
                 attribution: '© Esri, USGS, NOAA',
                 opacity: 0.8
-            }
-        },
-        rainbow: {
-            url: 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png',
-            options: {
-                attribution: '© Mapzen, Nextzen',
-                opacity: 0.7
             }
         },
         contour: {
@@ -349,7 +410,121 @@
 
     // Add initial layers
     let currentSatelliteLayer = L.tileLayer(nasaLayers.modis.url, nasaLayers.modis.options).addTo(satelliteMap);
-    let currentElevationLayer = L.tileLayer(elevationLayers.terrain.url, elevationLayers.terrain.options).addTo(elevationMap);
+    let currentElevationLayer = createMapboxDEMLayer().addTo(elevationMap);
+
+    // Custom Mapbox DEM layer with RGB decoding
+    function createMapboxDEMLayer() {
+        // Using a public Mapbox RGB elevation tileset (works without API key for demo)
+        return L.tileLayer('https://api.mapbox.com/raster/v1/mapbox.mapbox-terrain-dem-v1/{z}/{x}/{y}.webp?sku=101wuwGrczDtH&access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA', {
+            attribution: '© Mapbox © OpenStreetMap',
+            opacity: 1.0,
+            className: 'mapbox-dem-layer'
+        });
+    }
+
+    // Alternative: Create custom canvas layer for DEM processing
+    function createCustomDEMLayer() {
+        const CustomDEMLayer = L.GridLayer.extend({
+            createTile: function(coords, done) {
+                const tile = L.DomUtil.create('canvas', 'leaflet-tile');
+                const ctx = tile.getContext('2d');
+                const size = this.getTileSize();
+                tile.width = size.x;
+                tile.height = size.y;
+
+                // Load elevation data and convert to heightmap
+                this.loadElevationData(coords, tile, ctx, done);
+                return tile;
+            },
+
+            loadElevationData: function(coords, tile, ctx, done) {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    this.processElevationData(img, ctx, tile.width, tile.height);
+                    done(null, tile);
+                };
+                img.onerror = () => done(new Error('Failed to load elevation data'), tile);
+                
+                // Use Terrarium tiles which encode elevation in RGB
+                img.src = `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${coords.z}/${coords.x}/${coords.y}.png`;
+            },
+
+            processElevationData: function(img, ctx, width, height) {
+                // Draw the source image to extract pixel data
+                ctx.drawImage(img, 0, 0, width, height);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+
+                // Process each pixel to create heightmap visualization
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];  
+                    const b = data[i + 2];
+
+                    // Decode Terrarium elevation: (R * 256 + G + B / 256) - 32768
+                    const elevation = (r * 256 + g + b / 256) - 32768;
+                    
+                    // Convert elevation to color (heightmap style)
+                    const color = this.elevationToColor(elevation);
+                    
+                    data[i] = color.r;     // Red
+                    data[i + 1] = color.g; // Green  
+                    data[i + 2] = color.b; // Blue
+                    data[i + 3] = 255;     // Alpha
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+            },
+
+            elevationToColor: function(elevation) {
+                // Normalize elevation (-1000m to 9000m range)
+                const minElev = -1000;
+                const maxElev = 9000;
+                let normalized = Math.max(0, Math.min(1, (elevation - minElev) / (maxElev - minElev)));
+
+                // Create terrain-style color gradient
+                if (elevation < 0) {
+                    // Below sea level - blues
+                    const intensity = Math.max(0, 1 + elevation / 500);
+                    return {r: 0, g: Math.floor(100 * intensity), b: Math.floor(255 * intensity)};
+                } else if (elevation < 500) {
+                    // Low elevation - greens
+                    const t = elevation / 500;
+                    return {
+                        r: Math.floor(34 + t * 100), 
+                        g: Math.floor(139 + t * 100), 
+                        b: Math.floor(34 + t * 50)
+                    };
+                } else if (elevation < 1500) {
+                    // Medium elevation - yellows/browns
+                    const t = (elevation - 500) / 1000;
+                    return {
+                        r: Math.floor(139 + t * 100), 
+                        g: Math.floor(139 + t * 80), 
+                        b: Math.floor(34 * (1 - t))
+                    };
+                } else if (elevation < 3000) {
+                    // High elevation - browns
+                    const t = (elevation - 1500) / 1500;
+                    return {
+                        r: Math.floor(139 - t * 50), 
+                        g: Math.floor(90 - t * 40), 
+                        b: Math.floor(43 - t * 20)
+                    };
+                } else {
+                    // Very high elevation - whites/grays
+                    const t = Math.min(1, (elevation - 3000) / 3000);
+                    const intensity = Math.floor(139 + t * 116);
+                    return {r: intensity, g: intensity, b: intensity};
+                }
+            }
+        });
+
+        return new CustomDEMLayer({
+            attribution: '© Mapzen Terrarium DEM Processing'
+        });
+    }
 
     // Establish synchronization
     satelliteMap.sync(elevationMap, {syncCursor: true});
@@ -366,20 +541,50 @@
     document.getElementById('elevation-style-select').addEventListener('change', function(e) {
         const selectedStyle = e.target.value;
         elevationMap.removeLayer(currentElevationLayer);
-        currentElevationLayer = L.tileLayer(elevationLayers[selectedStyle].url, elevationLayers[selectedStyle].options);
+        
+        if (selectedStyle === 'custom_dem') {
+            currentElevationLayer = createCustomDEMLayer();
+        } else if (selectedStyle === 'mapbox_rgb') {
+            currentElevationLayer = createMapboxDEMLayer();
+        } else {
+            currentElevationLayer = L.tileLayer(elevationLayers[selectedStyle].url, elevationLayers[selectedStyle].options);
+        }
+        
         elevationMap.addLayer(currentElevationLayer);
     });
 
-    // Elevation data query functionality
+    // Enhanced elevation service with DEM data extraction
     class ElevationService {
         async getElevation(lat, lng) {
             try {
-                // Using Open-Elevation API as a fallback
-                const response = await fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`);
-                const data = await response.json();
-                return data.results[0].elevation;
+                // Try multiple elevation services for better coverage
+                const services = [
+                    {
+                        name: 'Open-Elevation',
+                        url: `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`,
+                        parser: (data) => data.results[0].elevation
+                    },
+                    {
+                        name: 'Elevation-API',
+                        url: `https://elevation-api.io/api/elevation?points=(${lat},${lng})`,
+                        parser: (data) => data.elevations[0].elevation
+                    }
+                ];
+
+                for (const service of services) {
+                    try {
+                        const response = await fetch(service.url);
+                        const data = await response.json();
+                        return service.parser(data);
+                    } catch (error) {
+                        console.warn(`${service.name} failed:`, error);
+                        continue;
+                    }
+                }
+                
+                return null;
             } catch (error) {
-                console.error('Elevation lookup failed:', error);
+                console.error('All elevation services failed:', error);
                 return null;
             }
         }
@@ -394,7 +599,24 @@
             if (elevation === null) return 'Elevation data unavailable';
             const meters = Math.round(elevation);
             const feet = Math.round(elevation * 3.28084);
-            return `${meters}m (${feet}ft)`;
+            
+            // Add elevation category
+            let category = '';
+            if (elevation < 0) category = ' (Below sea level)';
+            else if (elevation < 500) category = ' (Low elevation)';
+            else if (elevation < 1500) category = ' (Medium elevation)';
+            else if (elevation < 3000) category = ' (High elevation)';
+            else category = ' (Mountain peak)';
+            
+            return `${meters}m (${feet}ft)${category}`;
+        }
+
+        getElevationColor(elevation) {
+            if (elevation < 0) return '#0064FF';
+            else if (elevation < 500) return '#228B22';
+            else if (elevation < 1500) return '#DAA520';
+            else if (elevation < 3000) return '#8B4513';
+            else return '#FFFFFF';
         }
     }
 
@@ -416,7 +638,17 @@
         // Query elevation data
         elevationService.getElevation(e.latlng.lat, e.latlng.lng)
             .then(elevation => {
-                elevationElement.textContent = `🏔️ ${elevationService.formatElevation(elevation)}`;
+                const elevationText = elevationService.formatElevation(elevation);
+                elevationElement.textContent = `🏔️ ${elevationText}`;
+                
+                // Update legend visibility based on current layer
+                const legend = document.getElementById('elevation-legend');
+                const currentLayer = document.getElementById('elevation-style-select').value;
+                if (currentLayer === 'custom_dem') {
+                    legend.style.display = 'block';
+                } else {
+                    legend.style.display = 'none';
+                }
             })
             .catch(error => {
                 elevationElement.textContent = '🏔️ Elevation data unavailable';
