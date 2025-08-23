@@ -41,6 +41,10 @@
     .map-view:active {
         cursor: grabbing;
     }
+    
+    .grayscale-filter {
+        filter: grayscale(100%) contrast(150%) brightness(120%);
+    }
 </style>
 ```
 
@@ -83,34 +87,55 @@
             zoomControl: false
         });
         
-        // Right panel - RGB-encoded height data (actual heightmap)
+        // Right panel - Try Stamen Terrain first (more reliable)
         map2 = L.map('elevation-view', {
             center: currentCenter,
             zoom: currentZoom,
             zoomControl: false
         });
         
-        // AWS Terrarium - RGB encoded height data
-        const heightLayer = L.tileLayer('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', {
-            attribution: 'Height data © AWS Terrarium',
-            maxZoom: 15
+        // First try a basic working terrain layer to test
+        const workingTerrain = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.png', {
+            attribution: 'Stamen Terrain',
+            maxZoom: 14,
+            subdomains: ['a', 'b', 'c', 'd']
         });
         
-        heightLayer.on('tileerror', function() {
-            // Fallback to Mapbox RGB height tiles
-            console.log('AWS Terrarium failed, trying Mapbox RGB...');
-            map2.removeLayer(heightLayer);
-            L.tileLayer('https://api.mapbox.com/raster/v1/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA', {
-                attribution: 'Height data © Mapbox',
-                maxZoom: 14
-            }).addTo(map2);
+        workingTerrain.on('tileload', function() {
+            console.log('Stamen terrain loaded - now switching to height data...');
+            // Once we confirm terrain works, switch to height data
+            setTimeout(() => {
+                map2.removeLayer(workingTerrain);
+                
+                // Try simpler elevation service
+                const elevationLayer = L.tileLayer('https://cloud.maptiler.com/tiles/terrain-rgb/{z}/{x}/{y}.png', {
+                    attribution: 'MapTiler Height Data',
+                    maxZoom: 12
+                });
+                
+                elevationLayer.on('tileerror', function() {
+                    console.log('Height tiles failed - using grayscale conversion');
+                    // Fallback: use regular terrain but convert to grayscale
+                    map2.removeLayer(elevationLayer);
+                    const grayTerrain = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.png', {
+                        attribution: 'Terrain as heightmap',
+                        maxZoom: 14,
+                        subdomains: ['a', 'b', 'c', 'd'],
+                        className: 'grayscale-filter'
+                    });
+                    grayTerrain.addTo(map2);
+                });
+                
+                elevationLayer.addTo(map2);
+            }, 2000);
         });
         
-        heightLayer.on('tileload', function() {
-            console.log('RGB height tiles loaded successfully');
+        workingTerrain.on('tileerror', function() {
+            console.log('All tile services failed - check network/CORS');
+            document.getElementById('elevation-view').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:16px;text-align:center;">Tile services blocked<br>Check console for errors</div>';
         });
         
-        heightLayer.addTo(map2);
+        workingTerrain.addTo(map2);
         
         // Sync the maps
         let isSyncing = false;
