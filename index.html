@@ -1,158 +1,231 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
-    <title>Two Synced Maps</title>
-    <!--
-      Load the ArcGIS Maps SDK for JavaScript from CDN.
-      Using version 4.33 which is the latest as of August 2025.
-    -->
-    <link rel="stylesheet" href="https://js.arcgis.com/4.33/esri/themes/light/main.css" />
-    <script src="https://js.arcgis.com/4.33/"></script>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synchronized Terrain Maps</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <style>
-      /* Base styles for the page and containers */
-      html,
-      body {
-        padding: 0;
-        margin: 0;
-        height: 100%;
-        width: 100%;
-        background-color: #f3f4f6; /* A light gray background */
-      }
-      .container {
-        display: flex; /* Use flexbox for horizontal layout */
-        justify-content: center;
-        align-items: center;
-        width: 100%;
-        height: 100vh; /* Make the container take up the full viewport height */
-        gap: 0; /* Remove gap between the squares */
-      }
-      /* Map containers, each taking up half the width and fixed height */
-      .map-container {
-        width: 50%;
-        height: 512px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        border: 1px solid #d1d5db;
-      }
-      .loading-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #000;
+        }
+
+```
+    .container {
         display: flex;
-        justify-content: center;
-        align-items: center;
-        background-color: rgba(255, 255, 255, 0.8);
-        z-index: 100;
-        font-family: 'Inter', sans-serif;
-        font-size: 1.5rem;
-        color: #1f2937;
-      }
-    </style>
-  </head>
-  <body>
-    <!-- A simple loading overlay to indicate a blocking operation is in progress -->
-    <div id="loadingOverlay" class="loading-overlay">Loading maps...</div>
+        height: 100vh;
+        width: 100vw;
+    }
     
-    <!-- The main container for the two maps -->
-    <div class="container" style="display:none;">
-      <div id="view1Div" class="map-container"></div>
-      <div id="view2Div" class="map-container"></div>
+    .map-container {
+        flex: 1;
+        position: relative;
+        border-right: 2px solid #333;
+    }
+    
+    .map-container:last-child {
+        border-right: none;
+    }
+    
+    .map {
+        height: 100%;
+        width: 100%;
+    }
+    
+    .map-label {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1000;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    
+    .controls {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1000;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 10px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+    
+    .controls button {
+        background: #444;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        margin: 2px;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    
+    .controls button:hover {
+        background: #666;
+    }
+</style>
+```
+
+</head>
+<body>
+    <div class="container">
+        <div class="map-container">
+            <div class="map-label">Satellite Imagery</div>
+            <div id="satelliteMap" class="map"></div>
+        </div>
+        <div class="map-container">
+            <div class="map-label">Elevation Data</div>
+            <div id="elevationMap" class="map"></div>
+            <div class="controls">
+                <div>Height Data Format:</div>
+                <button onclick="switchElevationStyle('aws')">AWS Terrarium</button>
+                <button onclick="switchElevationStyle('mapbox')">Mapbox RGB</button>
+                <button onclick="switchElevationStyle('terrain')">MapTiler RGB</button>
+                <div style="margin-top:10px; font-size:10px;">
+                    RGB = Height encoded in pixels<br>
+                    Red*256² + Green*256 + Blue = meters
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- The JavaScript logic -->
-    <script>
-      require([
-        "esri/config",
-        "esri/Map",
-        "esri/views/MapView",
-        "esri/layers/ImageryLayer",
-        "esri/renderers/RasterStretchRenderer",
-        "esri/core/reactiveUtils"
-      ], (esriConfig, Map, MapView, ImageryLayer, RasterStretchRenderer, reactiveUtils) => {
-        // Set the API key directly
-        esriConfig.apiKey = "";
+```
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+    // Initialize maps
+    const satelliteMap = L.map('satelliteMap', {
+        center: [40.7128, -74.0060], // New York City
+        zoom: 10,
+        zoomControl: false
+    });
 
-        // --- Setup the Satellite Map View ---
-        const satelliteMap = new Map({
-          basemap: "satellite"
-        });
+    const elevationMap = L.map('elevationMap', {
+        center: [40.7128, -74.0060], // New York City
+        zoom: 10,
+        zoomControl: false
+    });
 
-        const satelliteView = new MapView({
-          container: "view1Div",
-          map: satelliteMap,
-          center: [-118.805, 34.027],
-          zoom: 13,
-          ui: { components: [] }
-        });
+    // Add satellite imagery layer
+    const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        attribution: 'Imagery &copy; Google',
+        maxZoom: 20
+    }).addTo(satelliteMap);
 
-        // --- Setup the DEM Heightmap View ---
-        const demRenderer = new RasterStretchRenderer({
-          stretchType: "min-max",
-          colorRamp: {
-            type: "multipart",
-            stops: [{
-              color: [0, 0, 0, 255],
-              value: -100 // Black for low values
-            }, {
-              color: [255, 255, 255, 255],
-              value: 4000 // White for high values
-            }]
-          }
-        });
+    // Add elevation layers - ACTUAL HEIGHT DATA
+    let currentElevationLayer;
+    
+    const elevationLayers = {
+        terrain: L.tileLayer('https://cloud.maptiler.com/tiles/terrain-rgb-v2/{z}/{x}/{y}.png?key=get_your_own_OpIi9ZULNHzrESv6T2vL', {
+            attribution: 'Height data &copy; MapTiler',
+            maxZoom: 12
+        }),
+        aws: L.tileLayer('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', {
+            attribution: 'Height data &copy; Mapzen/AWS',
+            maxZoom: 15
+        }),
+        mapbox: L.tileLayer('https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA', {
+            attribution: 'Height data &copy; Mapbox',
+            maxZoom: 14
+        })
+    };
 
-        const demLayer = new ImageryLayer({
-          url: "https://elevation.arcgis.com/arcgis/rest/services/WorldElevation/Terrain/ImageServer",
-          renderer: demRenderer,
-          format: "jpg"
-        });
+    // Set initial elevation layer
+    currentElevationLayer = elevationLayers.aws; // AWS Terrarium has best free access
+    currentElevationLayer.addTo(elevationMap);
 
-        const demMap = new Map({
-          layers: [demLayer]
-        });
+    // Synchronization variables
+    let isSyncing = false;
 
-        const demView = new MapView({
-          container: "view2Div",
-          map: demMap,
-          center: [-118.805, 34.027],
-          zoom: 13,
-          ui: { components: [] }
-        });
+    // Function to sync maps
+    function syncMaps(sourceMap, targetMap) {
+        if (isSyncing) return;
+        isSyncing = true;
+        
+        const center = sourceMap.getCenter();
+        const zoom = sourceMap.getZoom();
+        
+        targetMap.setView(center, zoom);
+        
+        setTimeout(() => {
+            isSyncing = false;
+        }, 100);
+    }
 
-        // --- Wait for everything to load, then sync ---
-        Promise.all([
-          // We wait for the view to be created
-          satelliteView.when(),
-          demView.when(),
-          // And we wait for the DEM layer to finish loading
-          demLayer.when()
-        ]).then(() => {
-          console.log("All components loaded and ready for synchronization.");
-          
-          // Hide the loading overlay and show the maps
-          document.getElementById('loadingOverlay').style.display = 'none';
-          document.querySelector('.container').style.display = 'flex';
+    // Add event listeners for synchronization
+    satelliteMap.on('moveend', function() {
+        syncMaps(satelliteMap, elevationMap);
+    });
 
-          const sync = (view1, view2) => {
-            reactiveUtils.watch(
-              () => view1.viewpoint,
-              (viewpoint) => {
-                view2.viewpoint = viewpoint;
-              },
-              { deep: true }
-            );
-          };
+    satelliteMap.on('zoomend', function() {
+        syncMaps(satelliteMap, elevationMap);
+    });
 
-          sync(satelliteView, demView);
-          sync(demView, satelliteView);
-        }).catch(error => {
-          console.error("Map initialization failed:", error);
-          document.getElementById('loadingOverlay').innerHTML = "Error loading maps. Please check the console.";
-        });
-      });
-    </script>
-  </body>
+    elevationMap.on('moveend', function() {
+        syncMaps(elevationMap, satelliteMap);
+    });
+
+    elevationMap.on('zoomend', function() {
+        syncMaps(elevationMap, satelliteMap);
+    });
+
+    // Function to switch elevation visualization style
+    function switchElevationStyle(style) {
+        if (currentElevationLayer) {
+            elevationMap.removeLayer(currentElevationLayer);
+        }
+        
+        currentElevationLayer = elevationLayers[style];
+        currentElevationLayer.addTo(elevationMap);
+    }
+
+    // Add some preset locations
+    function goToLocation(lat, lng, zoom) {
+        isSyncing = true;
+        satelliteMap.setView([lat, lng], zoom);
+        elevationMap.setView([lat, lng], zoom);
+        setTimeout(() => {
+            isSyncing = false;
+        }, 500);
+    }
+
+    // Keyboard shortcuts for common locations
+    document.addEventListener('keydown', function(e) {
+        switch(e.key) {
+            case '1':
+                goToLocation(40.7128, -74.0060, 10); // NYC
+                break;
+            case '2':
+                goToLocation(46.8182, 8.2275, 12); // Swiss Alps
+                break;
+            case '3':
+                goToLocation(36.1069, -112.1129, 13); // Grand Canyon
+                break;
+            case '4':
+                goToLocation(27.9881, 86.9250, 14); // Mount Everest
+                break;
+        }
+    });
+
+    // Add click coordinates display
+    function showCoordinates(e) {
+        console.log('Lat: ' + e.latlng.lat + ', Lng: ' + e.latlng.lng);
+    }
+
+    satelliteMap.on('click', showCoordinates);
+    elevationMap.on('click', showCoordinates);
+</script>
+```
+
+</body>
 </html>
-
