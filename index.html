@@ -4,226 +4,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Synchronized Terrain Maps</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <title>TouchDesigner Map Viewer</title>
     <style>
-        body {
+        * {
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
-            background: #000;
+            box-sizing: border-box;
         }
 
 ```
-    .container {
+    body {
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+        background: #000;
+    }
+    
+    .split-container {
         display: flex;
         height: 100vh;
         width: 100vw;
     }
     
-    .map-container {
+    .left-panel, .right-panel {
         flex: 1;
+        height: 100vh;
         position: relative;
-        border-right: 2px solid #333;
     }
     
-    .map-container:last-child {
-        border-right: none;
-    }
-    
-    .map {
-        height: 100%;
+    .map-view {
         width: 100%;
+        height: 100%;
+        cursor: grab;
     }
     
-    .map-label {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        z-index: 1000;
-        background: rgba(0,0,0,0.8);
-        color: white;
-        padding: 8px 12px;
-        border-radius: 4px;
-        font-size: 14px;
-        font-weight: bold;
-    }
-    
-    .controls {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 1000;
-        background: rgba(0,0,0,0.8);
-        color: white;
-        padding: 10px;
-        border-radius: 4px;
-        font-size: 12px;
-    }
-    
-    .controls button {
-        background: #444;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        margin: 2px;
-        border-radius: 3px;
-        cursor: pointer;
-    }
-    
-    .controls button:hover {
-        background: #666;
+    .map-view:active {
+        cursor: grabbing;
     }
 </style>
 ```
 
 </head>
 <body>
-    <div class="container">
-        <div class="map-container">
-            <div class="map-label">Satellite Imagery</div>
-            <div id="satelliteMap" class="map"></div>
+    <div class="split-container">
+        <div class="left-panel">
+            <div id="satellite-view" class="map-view"></div>
         </div>
-        <div class="map-container">
-            <div class="map-label">Elevation Data</div>
-            <div id="elevationMap" class="map"></div>
-            <div class="controls">
-                <div>Height Data Format:</div>
-                <button onclick="switchElevationStyle('aws')">AWS Terrarium</button>
-                <button onclick="switchElevationStyle('mapbox')">Mapbox RGB</button>
-                <button onclick="switchElevationStyle('terrain')">MapTiler RGB</button>
-                <div style="margin-top:10px; font-size:10px;">
-                    RGB = Height encoded in pixels<br>
-                    Red*256² + Green*256 + Blue = meters
-                </div>
-            </div>
+        <div class="right-panel">
+            <div id="elevation-view" class="map-view"></div>
         </div>
     </div>
 
 ```
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
-    // Initialize maps
-    const satelliteMap = L.map('satelliteMap', {
-        center: [40.7128, -74.0060], // New York City
-        zoom: 10,
-        zoomControl: false
-    });
-
-    const elevationMap = L.map('elevationMap', {
-        center: [40.7128, -74.0060], // New York City
-        zoom: 10,
-        zoomControl: false
-    });
-
-    // Add satellite imagery layer
-    const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-        attribution: 'Imagery &copy; Google',
-        maxZoom: 20
-    }).addTo(satelliteMap);
-
-    // Add elevation layers - ACTUAL HEIGHT DATA
-    let currentElevationLayer;
+    let map1, map2;
+    let currentZoom = 10;
+    let currentCenter = [40.7128, -74.0060]; // NYC default
     
-    const elevationLayers = {
-        terrain: L.tileLayer('https://cloud.maptiler.com/tiles/terrain-rgb-v2/{z}/{x}/{y}.png?key=get_your_own_OpIi9ZULNHzrESv6T2vL', {
-            attribution: 'Height data &copy; MapTiler',
-            maxZoom: 12
-        }),
-        aws: L.tileLayer('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', {
-            attribution: 'Height data &copy; Mapzen/AWS',
-            maxZoom: 15
-        }),
-        mapbox: L.tileLayer('https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA', {
-            attribution: 'Height data &copy; Mapbox',
-            maxZoom: 14
-        })
-    };
-
-    // Set initial elevation layer
-    currentElevationLayer = elevationLayers.aws; // AWS Terrarium has best free access
-    currentElevationLayer.addTo(elevationMap);
-
-    // Synchronization variables
-    let isSyncing = false;
-
-    // Function to sync maps
-    function syncMaps(sourceMap, targetMap) {
-        if (isSyncing) return;
-        isSyncing = true;
+    // Initialize maps when Leaflet is ready
+    function initializeMaps() {
+        // Left panel - Satellite imagery
+        map1 = L.map('satellite-view', {
+            center: currentCenter,
+            zoom: currentZoom,
+            zoomControl: false
+        });
         
-        const center = sourceMap.getCenter();
-        const zoom = sourceMap.getZoom();
+        // ESRI World Imagery for left side
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '© Esri',
+            maxZoom: 19
+        }).addTo(map1);
         
-        targetMap.setView(center, zoom);
+        // Right panel - ESRI Terrain3D imagery
+        map2 = L.map('elevation-view', {
+            center: currentCenter,
+            zoom: currentZoom,
+            zoomControl: false
+        });
         
-        setTimeout(() => {
-            isSyncing = false;
-        }, 100);
-    }
-
-    // Add event listeners for synchronization
-    satelliteMap.on('moveend', function() {
-        syncMaps(satelliteMap, elevationMap);
-    });
-
-    satelliteMap.on('zoomend', function() {
-        syncMaps(satelliteMap, elevationMap);
-    });
-
-    elevationMap.on('moveend', function() {
-        syncMaps(elevationMap, satelliteMap);
-    });
-
-    elevationMap.on('zoomend', function() {
-        syncMaps(elevationMap, satelliteMap);
-    });
-
-    // Function to switch elevation visualization style
-    function switchElevationStyle(style) {
-        if (currentElevationLayer) {
-            elevationMap.removeLayer(currentElevationLayer);
+        // ESRI Terrain3D layer for right side
+        L.tileLayer('https://tiles.arcgis.com/tiles/nGt4QxSblgDfeJn9/arcgis/rest/services/terrain3d/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '© Esri',
+            maxZoom: 16
+        }).addTo(map2);
+        
+        // Sync the maps
+        let isSyncing = false;
+        
+        function syncMaps(sourceMap, targetMap) {
+            if (isSyncing) return;
+            isSyncing = true;
+            
+            const center = sourceMap.getCenter();
+            const zoom = sourceMap.getZoom();
+            
+            targetMap.setView(center, zoom);
+            
+            setTimeout(() => {
+                isSyncing = false;
+            }, 100);
         }
         
-        currentElevationLayer = elevationLayers[style];
-        currentElevationLayer.addTo(elevationMap);
+        // Add sync event listeners
+        map1.on('moveend', () => syncMaps(map1, map2));
+        map1.on('zoomend', () => syncMaps(map1, map2));
+        map2.on('moveend', () => syncMaps(map2, map1));
+        map2.on('zoomend', () => syncMaps(map2, map1));
     }
-
-    // Add some preset locations
-    function goToLocation(lat, lng, zoom) {
-        isSyncing = true;
-        satelliteMap.setView([lat, lng], zoom);
-        elevationMap.setView([lat, lng], zoom);
-        setTimeout(() => {
-            isSyncing = false;
-        }, 500);
+    
+    // Load Leaflet library
+    function loadLeaflet() {
+        // Add Leaflet CSS
+        const leafletCSS = document.createElement('link');
+        leafletCSS.rel = 'stylesheet';
+        leafletCSS.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(leafletCSS);
+        
+        // Add Leaflet JS
+        const leafletJS = document.createElement('script');
+        leafletJS.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        leafletJS.onload = function() {
+            initializeMaps();
+        };
+        leafletJS.onerror = function() {
+            // Fallback if Leaflet fails to load
+            document.getElementById('satellite-view').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:18px;">Network blocked - Leaflet library failed to load</div>';
+            document.getElementById('elevation-view').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:18px;">Use local server or enable external resources</div>';
+        };
+        document.head.appendChild(leafletJS);
     }
-
-    // Keyboard shortcuts for common locations
-    document.addEventListener('keydown', function(e) {
-        switch(e.key) {
-            case '1':
-                goToLocation(40.7128, -74.0060, 10); // NYC
-                break;
-            case '2':
-                goToLocation(46.8182, 8.2275, 12); // Swiss Alps
-                break;
-            case '3':
-                goToLocation(36.1069, -112.1129, 13); // Grand Canyon
-                break;
-            case '4':
-                goToLocation(27.9881, 86.9250, 14); // Mount Everest
-                break;
-        }
-    });
-
-    // Add click coordinates display
-    function showCoordinates(e) {
-        console.log('Lat: ' + e.latlng.lat + ', Lng: ' + e.latlng.lng);
-    }
-
-    satelliteMap.on('click', showCoordinates);
-    elevationMap.on('click', showCoordinates);
+    
+    // Start loading
+    loadLeaflet();
 </script>
 ```
 
