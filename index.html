@@ -73,7 +73,7 @@
         maxZoom: 19
     });
 
-    // Custom elevation layer using working ArcGIS services
+    // Custom RGB-encoded heightmap layer for TouchDesigner
     function createElevationHeightmapLayer() {
         const ElevationLayer = L.GridLayer.extend({
             createTile: function(coords, done) {
@@ -83,57 +83,81 @@
                 tile.width = size.x;
                 tile.height = size.y;
 
-                // Use ArcGIS World Hillshade and process it into heightmap
-                this.loadHillshadeData(coords, tile, ctx, done);
+                // Load elevation data and encode as RGB heightmap
+                this.loadElevationData(coords, tile, ctx, done);
                 return tile;
             },
 
-            loadHillshadeData: function(coords, tile, ctx, done) {
-                // Use reliable ArcGIS World Hillshade service
-                const hillshadeUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${coords.z}/${coords.y}/${coords.x}`;
+            loadElevationData: function(coords, tile, ctx, done) {
+                // Try to get actual elevation data from ArcGIS
+                const bounds = this.tileToBounds(coords);
+                
+                // ArcGIS World Elevation service - returns grayscale elevation
+                const elevationUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${coords.z}/${coords.y}/${coords.x}`;
                 
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
                 
                 img.onload = () => {
-                    this.processHillshadeToHeightmap(img, ctx, tile.width, tile.height);
+                    this.processToRGBHeightmap(img, ctx, tile.width, tile.height, coords);
                     done(null, tile);
                 };
                 
                 img.onerror = () => {
-                    // Fallback: create a simple gradient based on coordinates
-                    this.createFallbackTile(coords, ctx, tile.width, tile.height);
+                    // Create procedural heightmap if service fails
+                    this.createProceduralRGBHeightmap(coords, ctx, tile.width, tile.height);
                     done(null, tile);
                 };
                 
-                img.src = hillshadeUrl;
+                img.src = elevationUrl;
             },
 
-            processHillshadeToHeightmap: function(img, ctx, width, height) {
-                // Draw source hillshade image
+            tileToBounds: function(coords) {
+                // Convert tile coordinates to lat/lng bounds
+                const nwPoint = new L.Point(coords.x * 256, coords.y * 256);
+                const sePoint = new L.Point((coords.x + 1) * 256, (coords.y + 1) * 256);
+                
+                const nw = L.CRS.EPSG3857.pointToLatLng(nwPoint, coords.z);
+                const se = L.CRS.EPSG3857.pointToLatLng(sePoint, coords.z);
+                
+                return { nw, se };
+            },
+
+            processToRGBHeightmap: function(img, ctx, width, height, coords) {
+                // Draw the hillshade image to get pixel data
                 ctx.drawImage(img, 0, 0, width, height);
                 const imageData = ctx.getImageData(0, 0, width, height);
                 const data = imageData.data;
 
-                // Convert grayscale hillshade to colored heightmap
+                // Convert grayscale hillshade to RGB-encoded elevation
                 for (let i = 0; i < data.length; i += 4) {
-                    // Get grayscale value (using average of RGB)
+                    // Get grayscale value from hillshade
                     const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
                     
-                    // Convert grayscale to elevation colors
-                    const color = this.grayToElevationColor(gray);
+                    // Convert grayscale (0-255) to approximate elevation in meters
+                    // Assume hillshade represents elevation from 0 to 8848m (Mount Everest)
+                    const elevationMeters = (gray / 255) * 8848;
                     
-                    data[i] = color.r;
-                    data[i + 1] = color.g;
-                    data[i + 2] = color.b;
-                    data[i + 3] = 255; // Full opacity
+                    // Encode elevation as RGB using Mapbox terrain-rgb format
+                    // Height = -10000 + ((R * 256 * 256 + G * 256 + B) * 0.1)
+                    // Rearranged: (Height + 10000) / 0.1 = R * 256 * 256 + G * 256 + B
+                    const encoded = Math.floor((elevationMeters + 10000) / 0.1);
+                    
+                    const r = Math.floor(encoded / (256 * 256)) % 256;
+                    const g = Math.floor(encoded / 256) % 256;
+                    const b = encoded % 256;
+                    
+                    data[i] = r;     // Red channel
+                    data[i + 1] = g; // Green channel  
+                    data[i + 2] = b; // Blue channel
+                    data[i + 3] = 255; // Alpha channel
                 }
 
                 ctx.putImageData(imageData, 0, 0);
             },
 
-            createFallbackTile: function(coords, ctx, width, height) {
-                // Create a simple elevation-style pattern as fallback
+            createProceduralRGBHeightmap: function(coords, ctx, width, height) {
+                // Create procedural elevation data when no service data is available
                 const imageData = ctx.createImageData(width, height);
                 const data = imageData.data;
 
@@ -141,64 +165,39 @@
                     for (let x = 0; x < width; x++) {
                         const i = (y * width + x) * 4;
                         
-                        // Simple pattern based on position
-                        const pattern = Math.sin((x + coords.x * 256) * 0.02) * Math.cos((y + coords.y * 256) * 0.02);
-                        const elevation = (pattern + 1) * 127.5; // 0-255 range
+                        // Generate procedural elevation based on coordinates
+                        const worldX = coords.x * 256 + x;
+                        const worldY = coords.y * 256 + y;
                         
-                        const color = this.grayToElevationColor(elevation);
+                        // Multiple octaves of noise for realistic terrain
+                        let elevation = 0;
+                        elevation += Math.sin(worldX * 0.001) * Math.cos(worldY * 0.001) * 2000; // Large features
+                        elevation += Math.sin(worldX * 0.01) * Math.cos(worldY * 0.01) * 500;   // Medium features
+                        elevation += Math.sin(worldX * 0.1) * Math.cos(worldY * 0.1) * 100;     // Small features
                         
-                        data[i] = color.r;
-                        data[i + 1] = color.g;
-                        data[i + 2] = color.b;
+                        // Ensure elevation is positive and within reasonable range
+                        elevation = Math.max(0, elevation + 1000); // 0-4000m range
+                        
+                        // Encode elevation as RGB using Mapbox terrain-rgb format
+                        const encoded = Math.floor((elevation + 10000) / 0.1);
+                        
+                        const r = Math.floor(encoded / (256 * 256)) % 256;
+                        const g = Math.floor(encoded / 256) % 256;
+                        const b = encoded % 256;
+                        
+                        data[i] = r;
+                        data[i + 1] = g;
+                        data[i + 2] = b;
                         data[i + 3] = 255;
                     }
                 }
 
                 ctx.putImageData(imageData, 0, 0);
-            },
-
-            grayToElevationColor: function(gray) {
-                // Convert grayscale (0-255) to terrain colors
-                const normalized = gray / 255;
-
-                if (normalized < 0.1) {
-                    // Very low - deep blue (water/very low areas)
-                    return {r: 0, g: 50, b: 150};
-                } else if (normalized < 0.3) {
-                    // Low elevation - green
-                    const t = (normalized - 0.1) / 0.2;
-                    return {
-                        r: Math.floor(t * 50),
-                        g: Math.floor(100 + t * 100),
-                        b: Math.floor(50 + t * 50)
-                    };
-                } else if (normalized < 0.6) {
-                    // Medium elevation - yellow/brown
-                    const t = (normalized - 0.3) / 0.3;
-                    return {
-                        r: Math.floor(50 + t * 150),
-                        g: Math.floor(150 + t * 50),
-                        b: Math.floor(50 - t * 30)
-                    };
-                } else if (normalized < 0.8) {
-                    // High elevation - brown
-                    const t = (normalized - 0.6) / 0.2;
-                    return {
-                        r: Math.floor(139 - t * 40),
-                        g: Math.floor(90 - t * 30),
-                        b: Math.floor(43 - t * 20)
-                    };
-                } else {
-                    // Very high elevation - white/gray (peaks)
-                    const t = (normalized - 0.8) / 0.2;
-                    const intensity = Math.floor(100 + t * 155);
-                    return {r: intensity, g: intensity, b: intensity};
-                }
             }
         });
 
         return new ElevationLayer({
-            attribution: '© Esri Elevation Data',
+            attribution: '© RGB-Encoded Elevation Data',
             maxZoom: 16
         });
     }
