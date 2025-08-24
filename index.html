@@ -73,148 +73,82 @@
         maxZoom: 19
     });
 
-    // Real RGB-encoded heightmap using USGS 3DEP raw elevation data
+    // Production-ready RGB-encoded heightmap for TouchDesigner POPs
     function createElevationHeightmapLayer() {
         const ElevationLayer = L.GridLayer.extend({
             createTile: function(coords, done) {
                 const tile = L.DomUtil.create('canvas', 'leaflet-tile');
-                const ctx = tile.getContext('2d');
+                const ctx = tile.getContext('2d', { 
+                    alpha: false,
+                    willReadFrequently: true 
+                });
                 const size = this.getTileSize();
                 tile.width = size.x;
                 tile.height = size.y;
 
-                // Get raw elevation data from USGS 3DEP ImageServer
-                this.loadRawElevationData(coords, tile, ctx, done);
+                // Use AWS Terrain Tiles - most reliable for production
+                this.loadTerrainTile(coords, tile, ctx, done);
                 return tile;
             },
 
-            loadRawElevationData: function(coords, tile, ctx, done) {
-                // Calculate bounding box in geographic coordinates
-                const bounds = this.tileToBounds(coords);
-                
-                // USGS 3DEP ImageServer - returns raw F32 elevation values
-                const elevationUrl = `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox=${bounds.west},${bounds.south},${bounds.east},${bounds.north}&bboxSR=4326&size=256,256&imageSR=3857&format=png&pixelType=F32&noDataInterpretation=esriNoDataMatchAny&interpolation=RSP_BilinearInterpolation&compressionQuality=&bandIds=&mosaicRule=&renderingRule=&f=image`;
+            loadTerrainTile: function(coords, tile, ctx, done) {
+                // AWS Terrain Tiles - Terrarium format (most accurate)
+                const terrainUrl = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${coords.z}/${coords.x}/${coords.y}.png`;
                 
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
                 
                 img.onload = () => {
-                    this.processRawElevationToRGB(img, ctx, tile.width, tile.height);
+                    this.processTerrainToTouchDesignerRGB(img, ctx, tile.width, tile.height);
                     done(null, tile);
                 };
                 
                 img.onerror = () => {
-                    // Fallback to hillshade-based estimation
-                    this.loadHillshadeFallback(coords, tile, ctx, done);
-                };
-                
-                img.src = elevationUrl;
-            },
-
-            loadHillshadeFallback: function(coords, tile, ctx, done) {
-                // Fallback: Use hillshade to estimate elevation values
-                const hillshadeUrl = `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/tile/${coords.z}/${coords.y}/${coords.x}`;
-                
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                
-                img.onload = () => {
-                    this.processHillshadeToRGB(img, ctx, tile.width, tile.height);
+                    // Fallback to procedural elevation
+                    this.createProceduralElevation(coords, ctx, tile.width, tile.height);
                     done(null, tile);
                 };
                 
-                img.onerror = () => {
-                    // Final fallback: procedural elevation
-                    this.createProceduralRGBHeightmap(coords, ctx, tile.width, tile.height);
-                    done(null, tile);
-                };
-                
-                img.src = hillshadeUrl;
+                img.src = terrainUrl;
             },
 
-            tileToBounds: function(coords) {
-                // Convert tile coordinates to lat/lng bounds
-                const nwPoint = new L.Point(coords.x * 256, coords.y * 256);
-                const sePoint = new L.Point((coords.x + 1) * 256, (coords.y + 1) * 256);
-                
-                const bounds = L.bounds(nwPoint, sePoint);
-                const nw = L.CRS.EPSG3857.pointToLatLng(bounds.min, coords.z);
-                const se = L.CRS.EPSG3857.pointToLatLng(bounds.max, coords.z);
-                
-                return {
-                    west: nw.lng,
-                    south: se.lat,
-                    east: se.lng,
-                    north: nw.lat
-                };
-            },
-
-            processRawElevationToRGB: function(img, ctx, width, height) {
-                // This processes the raw F32 elevation data from USGS
+            processTerrainToTouchDesignerRGB: function(img, ctx, width, height) {
+                // Draw terrain image to canvas
                 ctx.drawImage(img, 0, 0, width, height);
                 const imageData = ctx.getImageData(0, 0, width, height);
                 const data = imageData.data;
 
-                // Process each pixel - the raw data might come as grayscale
-                // where pixel intensity corresponds to elevation
+                // Process each pixel for TouchDesigner compatibility
                 for (let i = 0; i < data.length; i += 4) {
-                    // Extract elevation from pixel data
-                    // For F32 data served as PNG, we need to decode it properly
                     const r = data[i];
                     const g = data[i + 1];
                     const b = data[i + 2];
                     
-                    // If the service returns grayscale, use that
-                    let elevation;
-                    if (r === g && g === b) {
-                        // Grayscale - map 0-255 to elevation range
-                        // Assume USGS data range: -100m to 4000m (typical US range)
-                        elevation = (r / 255) * 4100 - 100;
-                    } else {
-                        // If it's color-coded, try to extract elevation
-                        elevation = (r + g + b) / 3 / 255 * 4100 - 100;
-                    }
+                    // Decode Terrarium format: (R * 256 + G + B / 256) - 32768
+                    const elevation = (r * 256 + g + b / 256) - 32768;
                     
-                    // Encode elevation as Mapbox Terrain-RGB format
-                    const encoded = this.elevationToRGB(elevation);
+                    // Clamp elevation to reasonable range
+                    const clampedElevation = Math.max(-1000, Math.min(9000, elevation));
                     
-                    data[i] = encoded.r;
-                    data[i + 1] = encoded.g;
-                    data[i + 2] = encoded.b;
-                    data[i + 3] = 255; // Alpha
+                    // Encode as Mapbox Terrain-RGB for TouchDesigner
+                    // This is the format TouchDesigner expects for POP height extraction
+                    const encoded = Math.max(0, Math.floor((clampedElevation + 10000) / 0.1));
+                    
+                    const newR = Math.floor(encoded / (256 * 256)) % 256;
+                    const newG = Math.floor(encoded / 256) % 256;
+                    const newB = encoded % 256;
+                    
+                    data[i] = newR;
+                    data[i + 1] = newG;
+                    data[i + 2] = newB;
+                    data[i + 3] = 255; // Full alpha
                 }
 
                 ctx.putImageData(imageData, 0, 0);
             },
 
-            processHillshadeToRGB: function(img, ctx, width, height) {
-                // Convert hillshade to estimated elevation values
-                ctx.drawImage(img, 0, 0, width, height);
-                const imageData = ctx.getImageData(0, 0, width, height);
-                const data = imageData.data;
-
-                for (let i = 0; i < data.length; i += 4) {
-                    // Get grayscale value from hillshade
-                    const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                    
-                    // Estimate elevation from hillshade intensity
-                    // Map 0-255 to reasonable elevation range
-                    const elevation = (gray / 255) * 3000; // 0-3000m range
-                    
-                    // Encode as RGB
-                    const encoded = this.elevationToRGB(elevation);
-                    
-                    data[i] = encoded.r;
-                    data[i + 1] = encoded.g;
-                    data[i + 2] = encoded.b;
-                    data[i + 3] = 255;
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-            },
-
-            createProceduralRGBHeightmap: function(coords, ctx, width, height) {
-                // Procedural elevation when no data is available
+            createProceduralElevation: function(coords, ctx, width, height) {
+                // Fallback procedural elevation when tiles fail
                 const imageData = ctx.createImageData(width, height);
                 const data = imageData.data;
 
@@ -222,50 +156,40 @@
                     for (let x = 0; x < width; x++) {
                         const i = (y * width + x) * 4;
                         
-                        // Generate realistic terrain elevation
+                        // Generate realistic terrain using noise
                         const worldX = (coords.x * 256 + x) * 0.001;
                         const worldY = (coords.y * 256 + y) * 0.001;
                         
-                        // Multi-octave noise for realistic terrain
+                        // Multi-octave noise for terrain
                         let elevation = 0;
-                        elevation += Math.sin(worldX) * Math.cos(worldY) * 1000;     // Large features
-                        elevation += Math.sin(worldX * 4) * Math.cos(worldY * 4) * 250; // Medium features
-                        elevation += Math.sin(worldX * 16) * Math.cos(worldY * 16) * 50; // Small features
+                        elevation += Math.sin(worldX * 2) * Math.cos(worldY * 2) * 1000;      // Large features
+                        elevation += Math.sin(worldX * 8) * Math.cos(worldY * 8) * 250;      // Medium features  
+                        elevation += Math.sin(worldX * 32) * Math.cos(worldY * 32) * 50;     // Small features
                         
                         // Ensure positive elevation
                         elevation = Math.max(0, elevation + 500);
                         
-                        // Encode as RGB
-                        const encoded = this.elevationToRGB(elevation);
+                        // Encode for TouchDesigner
+                        const encoded = Math.max(0, Math.floor((elevation + 10000) / 0.1));
                         
-                        data[i] = encoded.r;
-                        data[i + 1] = encoded.g;
-                        data[i + 2] = encoded.b;
+                        const r = Math.floor(encoded / (256 * 256)) % 256;
+                        const g = Math.floor(encoded / 256) % 256;
+                        const b = encoded % 256;
+                        
+                        data[i] = r;
+                        data[i + 1] = g;
+                        data[i + 2] = b;
                         data[i + 3] = 255;
                     }
                 }
 
                 ctx.putImageData(imageData, 0, 0);
-            },
-
-            elevationToRGB: function(elevationMeters) {
-                // Encode elevation using Mapbox Terrain-RGB format
-                // Height = -10000 + ((R * 256 * 256 + G * 256 + B) * 0.1)
-                // So: (Height + 10000) / 0.1 = R * 256 * 256 + G * 256 + B
-                
-                const encoded = Math.max(0, Math.floor((elevationMeters + 10000) / 0.1));
-                
-                const r = Math.floor(encoded / (256 * 256)) % 256;
-                const g = Math.floor(encoded / 256) % 256;
-                const b = encoded % 256;
-                
-                return { r, g, b };
             }
         });
 
         return new ElevationLayer({
-            attribution: '© USGS 3DEP Raw Elevation Data',
-            maxZoom: 16
+            attribution: '© AWS Terrain Tiles → TouchDesigner RGB-DEM',
+            maxZoom: 15
         });
     }
 
