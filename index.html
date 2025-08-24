@@ -81,214 +81,19 @@
         }
     };
 
-    // Alternative satellite layer that should work
-    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '© Esri',
-        maxZoom: 19
+    // NASA GIBS satellite layer - reliable and works without API keys
+    const satelliteLayer = L.tileLayer('https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/2023-08-15/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', {
+        attribution: '© NASA GIBS',
+        maxZoom: 9,
+        subdomains: ['a', 'b', 'c']
     });
 
-    // Custom DEM layer with RGB decoding and fallback
-    function createCustomDEMLayer() {
-        const CustomDEMLayer = L.GridLayer.extend({
-            createTile: function(coords, done) {
-                const tile = L.DomUtil.create('canvas', 'leaflet-tile');
-                const ctx = tile.getContext('2d');
-                const size = this.getTileSize();
-                tile.width = size.x;
-                tile.height = size.y;
-
-                // Load elevation data and convert to heightmap
-                this.loadElevationData(coords, tile, ctx, done);
-                return tile;
-            },
-
-            loadElevationData: function(coords, tile, ctx, done) {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                
-                // Use different sources based on zoom level
-                let elevationUrl;
-                if (coords.z <= 12) {
-                    // Use Terrarium for lower zoom levels (better coverage)
-                    elevationUrl = `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${coords.z}/${coords.x}/${coords.y}.png`;
-                } else {
-                    // Use OpenTopography for higher zoom levels
-                    elevationUrl = `https://cloud.sdsc.edu/v1/AUTH_opentopography/Raster/SRTMGL1_Ellip/${coords.z}/${coords.x}/${coords.y}.png`;
-                }
-                
-                img.onload = () => {
-                    if (coords.z <= 12) {
-                        this.processTerrarium(img, ctx, tile.width, tile.height);
-                    } else {
-                        this.processGrayscale(img, ctx, tile.width, tile.height);
-                    }
-                    done(null, tile);
-                };
-                
-                img.onerror = () => {
-                    // Try alternative source on error
-                    this.tryFallbackSource(coords, tile, ctx, done);
-                };
-                
-                img.src = elevationUrl;
-            },
-
-            tryFallbackSource: function(coords, tile, ctx, done) {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                
-                img.onload = () => {
-                    // Process as grayscale elevation
-                    this.processGrayscale(img, ctx, tile.width, tile.height);
-                    done(null, tile);
-                };
-                
-                img.onerror = () => {
-                    // Final fallback: create procedural elevation based on coordinates
-                    this.createProceduralTerrain(coords, ctx, tile.width, tile.height);
-                    done(null, tile);
-                };
-                
-                // Use USGS elevation service as fallback
-                img.src = `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox=${this.tileToBBox(coords)}&size=256,256&format=png&interpolation=RSP_BilinearInterpolation&f=image`;
-            },
-
-            tileToBBox: function(coords) {
-                // Convert tile coordinates to bounding box
-                const nw = L.point(coords.x, coords.y);
-                const se = L.point(coords.x + 1, coords.y + 1);
-                
-                const nwLatLng = L.CRS.EPSG3857.pointToLatLng(nw, coords.z);
-                const seLatLng = L.CRS.EPSG3857.pointToLatLng(se, coords.z);
-                
-                return `${seLatLng.lng},${seLatLng.lat},${nwLatLng.lng},${nwLatLng.lat}`;
-            },
-
-            processTerrarium: function(img, ctx, width, height) {
-                // Draw the source image to extract pixel data
-                ctx.drawImage(img, 0, 0, width, height);
-                const imageData = ctx.getImageData(0, 0, width, height);
-                const data = imageData.data;
-
-                // Process each pixel to create heightmap visualization
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];  
-                    const b = data[i + 2];
-
-                    // Decode Terrarium elevation: (R * 256 + G + B / 256) - 32768
-                    const elevation = (r * 256 + g + b / 256) - 32768;
-                    
-                    // Convert elevation to color (heightmap style)
-                    const color = this.elevationToColor(elevation);
-                    
-                    data[i] = color.r;     // Red
-                    data[i + 1] = color.g; // Green  
-                    data[i + 2] = color.b; // Blue
-                    data[i + 3] = 255;     // Alpha
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-            },
-
-            processGrayscale: function(img, ctx, width, height) {
-                // Draw the source image to extract pixel data
-                ctx.drawImage(img, 0, 0, width, height);
-                const imageData = ctx.getImageData(0, 0, width, height);
-                const data = imageData.data;
-
-                // Process grayscale elevation data
-                for (let i = 0; i < data.length; i += 4) {
-                    const gray = data[i]; // Use red channel as elevation
-                    
-                    // Map grayscale (0-255) to elevation range
-                    const elevation = (gray / 255) * 8000 - 1000; // Approximate range
-                    
-                    // Convert elevation to color
-                    const color = this.elevationToColor(elevation);
-                    
-                    data[i] = color.r;     // Red
-                    data[i + 1] = color.g; // Green  
-                    data[i + 2] = color.b; // Blue
-                    data[i + 3] = 255;     // Alpha
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-            },
-
-            createProceduralTerrain: function(coords, ctx, width, height) {
-                // Create procedural terrain when no data is available
-                const imageData = ctx.createImageData(width, height);
-                const data = imageData.data;
-
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const i = (y * width + x) * 4;
-                        
-                        // Simple noise-based elevation
-                        const noise = Math.sin(x * 0.1) * Math.cos(y * 0.1) * 0.5 + 0.5;
-                        const elevation = noise * 2000; // 0-2000m range
-                        
-                        const color = this.elevationToColor(elevation);
-                        
-                        data[i] = color.r;
-                        data[i + 1] = color.g;
-                        data[i + 2] = color.b;
-                        data[i + 3] = 255;
-                    }
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-            },
-
-            elevationToColor: function(elevation) {
-                // Normalize elevation (-1000m to 9000m range)
-                const minElev = -1000;
-                const maxElev = 9000;
-
-                // Create terrain-style color gradient
-                if (elevation < 0) {
-                    // Below sea level - blues
-                    const intensity = Math.max(0, 1 + elevation / 500);
-                    return {r: 0, g: Math.floor(100 * intensity), b: Math.floor(255 * intensity)};
-                } else if (elevation < 500) {
-                    // Low elevation - greens
-                    const t = elevation / 500;
-                    return {
-                        r: Math.floor(34 + t * 100), 
-                        g: Math.floor(139 + t * 100), 
-                        b: Math.floor(34 + t * 50)
-                    };
-                } else if (elevation < 1500) {
-                    // Medium elevation - yellows/browns
-                    const t = (elevation - 500) / 1000;
-                    return {
-                        r: Math.floor(139 + t * 100), 
-                        g: Math.floor(139 + t * 80), 
-                        b: Math.floor(34 * (1 - t))
-                    };
-                } else if (elevation < 3000) {
-                    // High elevation - browns
-                    const t = (elevation - 1500) / 1500;
-                    return {
-                        r: Math.floor(139 - t * 50), 
-                        g: Math.floor(90 - t * 40), 
-                        b: Math.floor(43 - t * 20)
-                    };
-                } else {
-                    // Very high elevation - whites/grays
-                    const t = Math.min(1, (elevation - 3000) / 3000);
-                    const intensity = Math.floor(139 + t * 116);
-                    return {r: intensity, g: intensity, b: intensity};
-                }
-            }
-        });
-
-        return new CustomDEMLayer({
-            attribution: '© Various DEM Sources',
-            maxZoom: 18
-        });
-    }
+    // NASA elevation visualization using ASTER GDEM
+    const elevationLayer = L.tileLayer('https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/ASTER_GDEM_Greyscale_Shaded_Relief/default/2011-01-01/GoogleMapsCompatible_Level12/{z}/{y}/{x}.jpg', {
+        attribution: '© NASA GIBS',
+        maxZoom: 12,
+        subdomains: ['a', 'b', 'c']
+    });
 
     // Initialize maps without zoom controls
     const satelliteMap = L.map('satellite-map', {
@@ -303,9 +108,7 @@
         zoomControl: false
     });
 
-    // Add layers - use working satellite layer
-    const elevationLayer = createCustomDEMLayer();
-
+    // Add NASA layers - both from the same reliable source
     satelliteLayer.addTo(satelliteMap);
     elevationLayer.addTo(elevationMap);
 
