@@ -41,16 +41,6 @@
         height: 100%;
     }
     
-    .sync-indicator {
-        position: absolute;
-        top: 50%;
-        left: 0px;
-        width: 0px;
-        height: 0px;
-        transform: translateY(-50%);
-        z-index: 1001;
-    }
-    
     /* Keep side-by-side layout on all screen sizes */
 </style>
 ```
@@ -61,15 +51,12 @@
         <div class="map-panel">
             <div id="satellite-map" class="map"></div>
         </div>
+        <div class="map-panel">
+            <div id="elevation-map" class="map"></div>
+        </div>
+    </div>
 
 ```
-    <div class="sync-indicator"></div>
-    
-    <div class="map-panel">
-        <div id="elevation-map" class="map"></div>
-    </div>
-</div>
-
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
