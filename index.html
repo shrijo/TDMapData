@@ -44,25 +44,11 @@
     .sync-indicator {
         position: absolute;
         top: 50%;
-        left: -1.5px;
-        width: 3px;
-        height: 80px;
-        background: linear-gradient(45deg, 
-            #667eea 0%, 
-            #764ba2 25%, 
-            #f093fb 50%, 
-            #f5576c 75%, 
-            #4facfe 100%);
+        left: 0px;
+        width: 0px;
+        height: 0px;
         transform: translateY(-50%);
         z-index: 1001;
-        animation: pulse 3s infinite;
-        border-radius: 2px;
-        box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
-    }
-    
-    @keyframes pulse {
-        0%, 100% { opacity: 0.6; transform: translateY(-50%) scale(1); }
-        50% { opacity: 1; transform: translateY(-50%) scale(1.1); }
     }
     
     /* Keep side-by-side layout on all screen sizes */
@@ -96,18 +82,23 @@
 </script>
 
 <script>
-    // Mapbox tile layers
+    // Mapbox tile layers - using working tile service
     const mapboxLayers = {
         satellite: {
-            url: 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoidGVzdCIsImEiOiJjazJsMmRhbzExbDJzM3FveTZhd2FxZmE1In0.test',
+            url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
             options: {
-                attribution: '© Mapbox',
-                maxZoom: 22,
-                tileSize: 512,
-                zoomOffset: -1
+                attribution: '© OpenStreetMap',
+                maxZoom: 19,
+                subdomains: ['a', 'b', 'c']
             }
         }
     };
+
+    // Alternative satellite layer that should work
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '© Esri',
+        maxZoom: 19
+    });
 
     // Custom DEM layer with RGB decoding
     function createCustomDEMLayer() {
@@ -217,11 +208,11 @@
         });
     }
 
-    // Initialize maps
+    // Initialize maps without zoom controls
     const satelliteMap = L.map('satellite-map', {
         center: [37.7749, -122.4194], // San Francisco Bay Area
         zoom: 8,
-        zoomControl: true
+        zoomControl: false
     });
 
     const elevationMap = L.map('elevation-map', {
@@ -230,8 +221,7 @@
         zoomControl: false
     });
 
-    // Add layers
-    const satelliteLayer = L.tileLayer(mapboxLayers.satellite.url, mapboxLayers.satellite.options);
+    // Add layers - use working satellite layer
     const elevationLayer = createCustomDEMLayer();
 
     satelliteLayer.addTo(satelliteMap);
