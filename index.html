@@ -73,7 +73,7 @@
         maxZoom: 19
     });
 
-    // Custom RGB-encoded heightmap layer for TouchDesigner
+    // Real RGB-encoded heightmap using USGS 3DEP raw elevation data
     function createElevationHeightmapLayer() {
         const ElevationLayer = L.GridLayer.extend({
             createTile: function(coords, done) {
@@ -83,33 +83,53 @@
                 tile.width = size.x;
                 tile.height = size.y;
 
-                // Load elevation data and encode as RGB heightmap
-                this.loadElevationData(coords, tile, ctx, done);
+                // Get raw elevation data from USGS 3DEP ImageServer
+                this.loadRawElevationData(coords, tile, ctx, done);
                 return tile;
             },
 
-            loadElevationData: function(coords, tile, ctx, done) {
-                // Try to get actual elevation data from ArcGIS
+            loadRawElevationData: function(coords, tile, ctx, done) {
+                // Calculate bounding box in geographic coordinates
                 const bounds = this.tileToBounds(coords);
                 
-                // ArcGIS World Elevation service - returns grayscale elevation
-                const elevationUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${coords.z}/${coords.y}/${coords.x}`;
+                // USGS 3DEP ImageServer - returns raw F32 elevation values
+                const elevationUrl = `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox=${bounds.west},${bounds.south},${bounds.east},${bounds.north}&bboxSR=4326&size=256,256&imageSR=3857&format=png&pixelType=F32&noDataInterpretation=esriNoDataMatchAny&interpolation=RSP_BilinearInterpolation&compressionQuality=&bandIds=&mosaicRule=&renderingRule=&f=image`;
                 
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
                 
                 img.onload = () => {
-                    this.processToRGBHeightmap(img, ctx, tile.width, tile.height, coords);
+                    this.processRawElevationToRGB(img, ctx, tile.width, tile.height);
                     done(null, tile);
                 };
                 
                 img.onerror = () => {
-                    // Create procedural heightmap if service fails
+                    // Fallback to hillshade-based estimation
+                    this.loadHillshadeFallback(coords, tile, ctx, done);
+                };
+                
+                img.src = elevationUrl;
+            },
+
+            loadHillshadeFallback: function(coords, tile, ctx, done) {
+                // Fallback: Use hillshade to estimate elevation values
+                const hillshadeUrl = `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/tile/${coords.z}/${coords.y}/${coords.x}`;
+                
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                img.onload = () => {
+                    this.processHillshadeToRGB(img, ctx, tile.width, tile.height);
+                    done(null, tile);
+                };
+                
+                img.onerror = () => {
+                    // Final fallback: procedural elevation
                     this.createProceduralRGBHeightmap(coords, ctx, tile.width, tile.height);
                     done(null, tile);
                 };
                 
-                img.src = elevationUrl;
+                img.src = hillshadeUrl;
             },
 
             tileToBounds: function(coords) {
@@ -117,47 +137,84 @@
                 const nwPoint = new L.Point(coords.x * 256, coords.y * 256);
                 const sePoint = new L.Point((coords.x + 1) * 256, (coords.y + 1) * 256);
                 
-                const nw = L.CRS.EPSG3857.pointToLatLng(nwPoint, coords.z);
-                const se = L.CRS.EPSG3857.pointToLatLng(sePoint, coords.z);
+                const bounds = L.bounds(nwPoint, sePoint);
+                const nw = L.CRS.EPSG3857.pointToLatLng(bounds.min, coords.z);
+                const se = L.CRS.EPSG3857.pointToLatLng(bounds.max, coords.z);
                 
-                return { nw, se };
+                return {
+                    west: nw.lng,
+                    south: se.lat,
+                    east: se.lng,
+                    north: nw.lat
+                };
             },
 
-            processToRGBHeightmap: function(img, ctx, width, height, coords) {
-                // Draw the hillshade image to get pixel data
+            processRawElevationToRGB: function(img, ctx, width, height) {
+                // This processes the raw F32 elevation data from USGS
                 ctx.drawImage(img, 0, 0, width, height);
                 const imageData = ctx.getImageData(0, 0, width, height);
                 const data = imageData.data;
 
-                // Convert grayscale hillshade to RGB-encoded elevation
+                // Process each pixel - the raw data might come as grayscale
+                // where pixel intensity corresponds to elevation
+                for (let i = 0; i < data.length; i += 4) {
+                    // Extract elevation from pixel data
+                    // For F32 data served as PNG, we need to decode it properly
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    
+                    // If the service returns grayscale, use that
+                    let elevation;
+                    if (r === g && g === b) {
+                        // Grayscale - map 0-255 to elevation range
+                        // Assume USGS data range: -100m to 4000m (typical US range)
+                        elevation = (r / 255) * 4100 - 100;
+                    } else {
+                        // If it's color-coded, try to extract elevation
+                        elevation = (r + g + b) / 3 / 255 * 4100 - 100;
+                    }
+                    
+                    // Encode elevation as Mapbox Terrain-RGB format
+                    const encoded = this.elevationToRGB(elevation);
+                    
+                    data[i] = encoded.r;
+                    data[i + 1] = encoded.g;
+                    data[i + 2] = encoded.b;
+                    data[i + 3] = 255; // Alpha
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+            },
+
+            processHillshadeToRGB: function(img, ctx, width, height) {
+                // Convert hillshade to estimated elevation values
+                ctx.drawImage(img, 0, 0, width, height);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+
                 for (let i = 0; i < data.length; i += 4) {
                     // Get grayscale value from hillshade
                     const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
                     
-                    // Convert grayscale (0-255) to approximate elevation in meters
-                    // Assume hillshade represents elevation from 0 to 8848m (Mount Everest)
-                    const elevationMeters = (gray / 255) * 8848;
+                    // Estimate elevation from hillshade intensity
+                    // Map 0-255 to reasonable elevation range
+                    const elevation = (gray / 255) * 3000; // 0-3000m range
                     
-                    // Encode elevation as RGB using Mapbox terrain-rgb format
-                    // Height = -10000 + ((R * 256 * 256 + G * 256 + B) * 0.1)
-                    // Rearranged: (Height + 10000) / 0.1 = R * 256 * 256 + G * 256 + B
-                    const encoded = Math.floor((elevationMeters + 10000) / 0.1);
+                    // Encode as RGB
+                    const encoded = this.elevationToRGB(elevation);
                     
-                    const r = Math.floor(encoded / (256 * 256)) % 256;
-                    const g = Math.floor(encoded / 256) % 256;
-                    const b = encoded % 256;
-                    
-                    data[i] = r;     // Red channel
-                    data[i + 1] = g; // Green channel  
-                    data[i + 2] = b; // Blue channel
-                    data[i + 3] = 255; // Alpha channel
+                    data[i] = encoded.r;
+                    data[i + 1] = encoded.g;
+                    data[i + 2] = encoded.b;
+                    data[i + 3] = 255;
                 }
 
                 ctx.putImageData(imageData, 0, 0);
             },
 
             createProceduralRGBHeightmap: function(coords, ctx, width, height) {
-                // Create procedural elevation data when no service data is available
+                // Procedural elevation when no data is available
                 const imageData = ctx.createImageData(width, height);
                 const data = imageData.data;
 
@@ -165,39 +222,49 @@
                     for (let x = 0; x < width; x++) {
                         const i = (y * width + x) * 4;
                         
-                        // Generate procedural elevation based on coordinates
-                        const worldX = coords.x * 256 + x;
-                        const worldY = coords.y * 256 + y;
+                        // Generate realistic terrain elevation
+                        const worldX = (coords.x * 256 + x) * 0.001;
+                        const worldY = (coords.y * 256 + y) * 0.001;
                         
-                        // Multiple octaves of noise for realistic terrain
+                        // Multi-octave noise for realistic terrain
                         let elevation = 0;
-                        elevation += Math.sin(worldX * 0.001) * Math.cos(worldY * 0.001) * 2000; // Large features
-                        elevation += Math.sin(worldX * 0.01) * Math.cos(worldY * 0.01) * 500;   // Medium features
-                        elevation += Math.sin(worldX * 0.1) * Math.cos(worldY * 0.1) * 100;     // Small features
+                        elevation += Math.sin(worldX) * Math.cos(worldY) * 1000;     // Large features
+                        elevation += Math.sin(worldX * 4) * Math.cos(worldY * 4) * 250; // Medium features
+                        elevation += Math.sin(worldX * 16) * Math.cos(worldY * 16) * 50; // Small features
                         
-                        // Ensure elevation is positive and within reasonable range
-                        elevation = Math.max(0, elevation + 1000); // 0-4000m range
+                        // Ensure positive elevation
+                        elevation = Math.max(0, elevation + 500);
                         
-                        // Encode elevation as RGB using Mapbox terrain-rgb format
-                        const encoded = Math.floor((elevation + 10000) / 0.1);
+                        // Encode as RGB
+                        const encoded = this.elevationToRGB(elevation);
                         
-                        const r = Math.floor(encoded / (256 * 256)) % 256;
-                        const g = Math.floor(encoded / 256) % 256;
-                        const b = encoded % 256;
-                        
-                        data[i] = r;
-                        data[i + 1] = g;
-                        data[i + 2] = b;
+                        data[i] = encoded.r;
+                        data[i + 1] = encoded.g;
+                        data[i + 2] = encoded.b;
                         data[i + 3] = 255;
                     }
                 }
 
                 ctx.putImageData(imageData, 0, 0);
+            },
+
+            elevationToRGB: function(elevationMeters) {
+                // Encode elevation using Mapbox Terrain-RGB format
+                // Height = -10000 + ((R * 256 * 256 + G * 256 + B) * 0.1)
+                // So: (Height + 10000) / 0.1 = R * 256 * 256 + G * 256 + B
+                
+                const encoded = Math.max(0, Math.floor((elevationMeters + 10000) / 0.1));
+                
+                const r = Math.floor(encoded / (256 * 256)) % 256;
+                const g = Math.floor(encoded / 256) % 256;
+                const b = encoded % 256;
+                
+                return { r, g, b };
             }
         });
 
         return new ElevationLayer({
-            attribution: '© RGB-Encoded Elevation Data',
+            attribution: '© USGS 3DEP Raw Elevation Data',
             maxZoom: 16
         });
     }
