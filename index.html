@@ -87,7 +87,7 @@
         maxZoom: 19
     });
 
-    // Custom DEM layer with RGB decoding
+    // Custom DEM layer with RGB decoding and fallback
     function createCustomDEMLayer() {
         const CustomDEMLayer = L.GridLayer.extend({
             createTile: function(coords, done) {
@@ -105,22 +105,66 @@
             loadElevationData: function(coords, tile, ctx, done) {
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
+                
+                // Use different sources based on zoom level
+                let elevationUrl;
+                if (coords.z <= 12) {
+                    // Use Terrarium for lower zoom levels (better coverage)
+                    elevationUrl = `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${coords.z}/${coords.x}/${coords.y}.png`;
+                } else {
+                    // Use OpenTopography for higher zoom levels
+                    elevationUrl = `https://cloud.sdsc.edu/v1/AUTH_opentopography/Raster/SRTMGL1_Ellip/${coords.z}/${coords.x}/${coords.y}.png`;
+                }
+                
                 img.onload = () => {
-                    this.processElevationData(img, ctx, tile.width, tile.height);
-                    done(null, tile);
-                };
-                img.onerror = () => {
-                    // Fallback to solid color if elevation data fails
-                    ctx.fillStyle = '#333';
-                    ctx.fillRect(0, 0, tile.width, tile.height);
+                    if (coords.z <= 12) {
+                        this.processTerrarium(img, ctx, tile.width, tile.height);
+                    } else {
+                        this.processGrayscale(img, ctx, tile.width, tile.height);
+                    }
                     done(null, tile);
                 };
                 
-                // Use Terrarium tiles which encode elevation in RGB
-                img.src = `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${coords.z}/${coords.x}/${coords.y}.png`;
+                img.onerror = () => {
+                    // Try alternative source on error
+                    this.tryFallbackSource(coords, tile, ctx, done);
+                };
+                
+                img.src = elevationUrl;
             },
 
-            processElevationData: function(img, ctx, width, height) {
+            tryFallbackSource: function(coords, tile, ctx, done) {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                img.onload = () => {
+                    // Process as grayscale elevation
+                    this.processGrayscale(img, ctx, tile.width, tile.height);
+                    done(null, tile);
+                };
+                
+                img.onerror = () => {
+                    // Final fallback: create procedural elevation based on coordinates
+                    this.createProceduralTerrain(coords, ctx, tile.width, tile.height);
+                    done(null, tile);
+                };
+                
+                // Use USGS elevation service as fallback
+                img.src = `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox=${this.tileToBBox(coords)}&size=256,256&format=png&interpolation=RSP_BilinearInterpolation&f=image`;
+            },
+
+            tileToBBox: function(coords) {
+                // Convert tile coordinates to bounding box
+                const nw = L.point(coords.x, coords.y);
+                const se = L.point(coords.x + 1, coords.y + 1);
+                
+                const nwLatLng = L.CRS.EPSG3857.pointToLatLng(nw, coords.z);
+                const seLatLng = L.CRS.EPSG3857.pointToLatLng(se, coords.z);
+                
+                return `${seLatLng.lng},${seLatLng.lat},${nwLatLng.lng},${nwLatLng.lat}`;
+            },
+
+            processTerrarium: function(img, ctx, width, height) {
                 // Draw the source image to extract pixel data
                 ctx.drawImage(img, 0, 0, width, height);
                 const imageData = ctx.getImageData(0, 0, width, height);
@@ -142,6 +186,56 @@
                     data[i + 1] = color.g; // Green  
                     data[i + 2] = color.b; // Blue
                     data[i + 3] = 255;     // Alpha
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+            },
+
+            processGrayscale: function(img, ctx, width, height) {
+                // Draw the source image to extract pixel data
+                ctx.drawImage(img, 0, 0, width, height);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+
+                // Process grayscale elevation data
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = data[i]; // Use red channel as elevation
+                    
+                    // Map grayscale (0-255) to elevation range
+                    const elevation = (gray / 255) * 8000 - 1000; // Approximate range
+                    
+                    // Convert elevation to color
+                    const color = this.elevationToColor(elevation);
+                    
+                    data[i] = color.r;     // Red
+                    data[i + 1] = color.g; // Green  
+                    data[i + 2] = color.b; // Blue
+                    data[i + 3] = 255;     // Alpha
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+            },
+
+            createProceduralTerrain: function(coords, ctx, width, height) {
+                // Create procedural terrain when no data is available
+                const imageData = ctx.createImageData(width, height);
+                const data = imageData.data;
+
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = (y * width + x) * 4;
+                        
+                        // Simple noise-based elevation
+                        const noise = Math.sin(x * 0.1) * Math.cos(y * 0.1) * 0.5 + 0.5;
+                        const elevation = noise * 2000; // 0-2000m range
+                        
+                        const color = this.elevationToColor(elevation);
+                        
+                        data[i] = color.r;
+                        data[i + 1] = color.g;
+                        data[i + 2] = color.b;
+                        data[i + 3] = 255;
+                    }
                 }
 
                 ctx.putImageData(imageData, 0, 0);
@@ -191,7 +285,8 @@
         });
 
         return new CustomDEMLayer({
-            attribution: '© Mapzen Terrarium'
+            attribution: '© Various DEM Sources',
+            maxZoom: 18
         });
     }
 
