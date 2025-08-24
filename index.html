@@ -4,39 +4,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Split View Terrain</title>
+    <title>Split Terrain Map</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
 ```
-<!-- Leaflet CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
-      crossorigin=""/>
-
-<style>
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-    }
-    
     body {
-        font-family: system-ui, sans-serif;
-        background: #000;
+        font-family: Arial, sans-serif;
+        height: 100vh;
         overflow: hidden;
     }
     
     .container {
         display: flex;
+        width: 100%;
         height: 100vh;
-        position: relative;
     }
     
-    .map-panel {
+    .map-container {
         flex: 1;
+        height: 100%;
         position: relative;
     }
     
-    .map {
+    #colorMap, #heightMap {
         width: 100%;
         height: 100%;
     }
@@ -46,213 +42,131 @@
 </head>
 <body>
     <div class="container">
-        <div class="map-panel">
-            <div id="satellite-map" class="map"></div>
+        <div class="map-container">
+            <div id="colorMap"></div>
         </div>
-        <div class="map-panel">
-            <div id="elevation-map" class="map"></div>
+        <div class="map-container">
+            <div id="heightMap"></div>
         </div>
     </div>
 
 ```
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
-        crossorigin=""></script>
-
-<!-- Leaflet Sync Plugin -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
-    // Leaflet.Sync plugin inline
-    !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t="undefined"!=typeof globalThis?globalThis:t||self).L=t.L||{})}(this,function(t){"use strict";var e=L.Map.include({sync:function(t,e){return this._initSync(),e=L.extend({syncCursor:!1,offsetFn:function(t,e,n){return t}},e),this._syncMaps.push({map:t,options:e}),t._initSync(),t._syncMaps.push({map:this,options:e}),this._onSyncMove=L.bind(this._onSyncMove,this),this._onSyncViewreset=L.bind(this._onSyncViewreset,this),this._onSyncMousemove=L.bind(this._onSyncMousemove,this),this.on("moveend",this._onSyncMove,this),this.on("zoomend",this._onSyncMove,this),this.on("viewreset",this._onSyncViewreset,this),e.syncCursor&&this.on("mousemove",this._onSyncMousemove,this),this},unsync:function(t){var e,n=this._syncMaps;if(this._syncMaps)for(e=0;e<n.length;e++)if(n[e].map===t){n.splice(e,1),t._syncMaps&&t._syncMaps.splice(this._syncMaps.findIndex(function(t){return t.map===this}),1);break}return 0===this._syncMaps.length&&(this.off("moveend",this._onSyncMove,this),this.off("zoomend",this._onSyncMove,this),this.off("viewreset",this._onSyncViewreset,this),this.off("mousemove",this._onSyncMousemove,this)),this},_initSync:function(){this._syncMaps||(this._syncMaps=[])},_onSyncMove:function(){if(!this._syncSuspended){var t,e,n,i=this.getCenter(),s=this.getZoom();for(this._syncSuspended=!0,t=0;t<this._syncMaps.length;t++)e=this._syncMaps[t],n=e.options.offsetFn(i,s,e.map),e.map.setView(n,s,{animate:!1,reset:!1});this._syncSuspended=!1}},_onSyncViewreset:function(){if(!this._syncSuspended){var t,e,n,i=this.getCenter(),s=this.getZoom();for(this._syncSuspended=!0,t=0;t<this._syncMaps.length;t++)e=this._syncMaps[t],n=e.options.offsetFn(i,s,e.map),e.map.setView(n,s,{animate:!1,reset:!0});this._syncSuspended=!1}},_onSyncMousemove:function(t){if(!this._syncSuspended){var e,n,i;for(this._syncSuspended=!0,e=0;e<this._syncMaps.length;e++)if(n=this._syncMaps[e].map,i=n.mouseEventToContainerPoint(t.originalEvent),n.getContainer().dispatchEvent){var s=new MouseEvent("mousemove",{bubbles:!0,cancelable:!0,view:window,clientX:i.x,clientY:i.y});n.getContainer().dispatchEvent(s)}this._syncSuspended=!1}}});t.Map=e,Object.defineProperty(t,"__esModule",{value:!0})});
-</script>
+    let colorMap, heightMap;
+    let isUpdating = false;
 
-<script>
-    // ArcGIS/Esri satellite imagery
-    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '© Esri',
-        maxZoom: 19
-    });
-
-    // Production-ready RGB-encoded heightmap for TouchDesigner POPs
-    function createElevationHeightmapLayer() {
-        const ElevationLayer = L.GridLayer.extend({
-            createTile: function(coords, done) {
-                const tile = L.DomUtil.create('canvas', 'leaflet-tile');
-                const ctx = tile.getContext('2d', { 
-                    alpha: false,
-                    willReadFrequently: true 
-                });
-                const size = this.getTileSize();
-                tile.width = size.x;
-                tile.height = size.y;
-
-                // Use AWS Terrain Tiles - most reliable for production
-                this.loadTerrainTile(coords, tile, ctx, done);
-                return tile;
-            },
-
-            loadTerrainTile: function(coords, tile, ctx, done) {
-                // AWS Terrain Tiles - Terrarium format (most accurate)
-                const terrainUrl = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${coords.z}/${coords.x}/${coords.y}.png`;
-                
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                
-                img.onload = () => {
-                    this.processTerrainToTouchDesignerRGB(img, ctx, tile.width, tile.height);
-                    done(null, tile);
-                };
-                
-                img.onerror = () => {
-                    // Fallback to procedural elevation
-                    this.createProceduralElevation(coords, ctx, tile.width, tile.height);
-                    done(null, tile);
-                };
-                
-                img.src = terrainUrl;
-            },
-
-            processTerrainToTouchDesignerRGB: function(img, ctx, width, height) {
-                // Draw terrain image to canvas
-                ctx.drawImage(img, 0, 0, width, height);
-                const imageData = ctx.getImageData(0, 0, width, height);
-                const data = imageData.data;
-
-                // Process each pixel for TouchDesigner compatibility
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    
-                    // Decode Terrarium format: (R * 256 + G + B / 256) - 32768
-                    const elevation = (r * 256 + g + b / 256) - 32768;
-                    
-                    // Clamp elevation to reasonable range
-                    const clampedElevation = Math.max(-1000, Math.min(9000, elevation));
-                    
-                    // Encode as Mapbox Terrain-RGB for TouchDesigner
-                    // This is the format TouchDesigner expects for POP height extraction
-                    const encoded = Math.max(0, Math.floor((clampedElevation + 10000) / 0.1));
-                    
-                    const newR = Math.floor(encoded / (256 * 256)) % 256;
-                    const newG = Math.floor(encoded / 256) % 256;
-                    const newB = encoded % 256;
-                    
-                    data[i] = newR;
-                    data[i + 1] = newG;
-                    data[i + 2] = newB;
-                    data[i + 3] = 255; // Full alpha
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-            },
-
-            createProceduralElevation: function(coords, ctx, width, height) {
-                // Fallback procedural elevation when tiles fail
-                const imageData = ctx.createImageData(width, height);
-                const data = imageData.data;
-
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const i = (y * width + x) * 4;
-                        
-                        // Generate realistic terrain using noise
-                        const worldX = (coords.x * 256 + x) * 0.001;
-                        const worldY = (coords.y * 256 + y) * 0.001;
-                        
-                        // Multi-octave noise for terrain
-                        let elevation = 0;
-                        elevation += Math.sin(worldX * 2) * Math.cos(worldY * 2) * 1000;      // Large features
-                        elevation += Math.sin(worldX * 8) * Math.cos(worldY * 8) * 250;      // Medium features  
-                        elevation += Math.sin(worldX * 32) * Math.cos(worldY * 32) * 50;     // Small features
-                        
-                        // Ensure positive elevation
-                        elevation = Math.max(0, elevation + 500);
-                        
-                        // Encode for TouchDesigner
-                        const encoded = Math.max(0, Math.floor((elevation + 10000) / 0.1));
-                        
-                        const r = Math.floor(encoded / (256 * 256)) % 256;
-                        const g = Math.floor(encoded / 256) % 256;
-                        const b = encoded % 256;
-                        
-                        data[i] = r;
-                        data[i + 1] = g;
-                        data[i + 2] = b;
-                        data[i + 3] = 255;
-                    }
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-            }
-        });
-
-        return new ElevationLayer({
-            attribution: '© AWS Terrain Tiles → TouchDesigner RGB-DEM',
-            maxZoom: 15
-        });
-    }
-
-    // Initialize maps without zoom controls
-    const satelliteMap = L.map('satellite-map', {
-        center: [37.7749, -122.4194], // San Francisco Bay Area
-        zoom: 8,
-        zoomControl: false
-    });
-
-    const elevationMap = L.map('elevation-map', {
-        center: [37.7749, -122.4194],
-        zoom: 8,
-        zoomControl: false
-    });
-
-    // Add layers
-    const elevationLayer = createElevationHeightmapLayer();
-
-    satelliteLayer.addTo(satelliteMap);
-    elevationLayer.addTo(elevationMap);
-
-    // Establish synchronization
-    satelliteMap.sync(elevationMap, {syncCursor: true});
-    elevationMap.sync(satelliteMap, {syncCursor: true});
-
-    // Click handlers for markers
-    function handleMapClick(e) {
-        const markerIcon = L.divIcon({
-            className: 'custom-marker',
-            html: '<div style="background: #FC3D21; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
-            iconSize: [16, 16],
-            iconAnchor: [8, 8]
-        });
-
-        // Clear existing markers
-        satelliteMap.eachLayer(layer => {
-            if (layer instanceof L.Marker) satelliteMap.removeLayer(layer);
-        });
-        elevationMap.eachLayer(layer => {
-            if (layer instanceof L.Marker) elevationMap.removeLayer(layer);
-        });
-
-        // Add new markers
-        L.marker(e.latlng, {icon: markerIcon}).addTo(satelliteMap);
-        L.marker(e.latlng, {icon: markerIcon}).addTo(elevationMap);
-    }
-
-    // Bind events
-    satelliteMap.on('click', handleMapClick);
-    elevationMap.on('click', handleMapClick);
-
-    // Handle resize
-    function handleResize() {
+    // Synchronize map movements
+    function syncMaps(sourceMap, targetMap) {
+        if (isUpdating) return;
+        isUpdating = true;
+        
+        const center = sourceMap.getCenter();
+        const zoom = sourceMap.getZoom();
+        
+        targetMap.setView(center, zoom, { animate: false });
+        
         setTimeout(() => {
-            satelliteMap.invalidateSize();
-            elevationMap.invalidateSize();
+            isUpdating = false;
         }, 100);
     }
 
-    window.addEventListener('resize', handleResize);
-    
-    console.log('ArcGIS Split View Terrain Maps loaded successfully!');
+    // Initialize both maps
+    function initializeMaps() {
+        // Color map (left side) - using World Imagery for color data
+        colorMap = L.map('colorMap', {
+            center: [46.8182, 8.2275], // Switzerland as default
+            zoom: 8,
+            zoomControl: false
+        });
+
+        // Add World Imagery basemap for color data
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '&copy; Esri'
+        }).addTo(colorMap);
+
+        // Height map (right side) - using the terrain layer you provided
+        heightMap = L.map('heightMap', {
+            center: [46.8182, 8.2275], // Switzerland as default
+            zoom: 8,
+            zoomControl: false
+        });
+
+        // Add the ArcGIS terrain layer for height data
+        L.tileLayer('https://tiles.arcgis.com/tiles/nGt4QxSblgDfeJn9/arcgis/rest/services/terrain_with_heavy_bathymetry/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '&copy; Esri'
+        }).addTo(heightMap);
+
+        // Sync map movements
+        colorMap.on('moveend zoomend', function() {
+            syncMaps(colorMap, heightMap);
+        });
+
+        heightMap.on('moveend zoomend', function() {
+            syncMaps(heightMap, colorMap);
+        });
+
+        // Additional synchronization for drag events
+        colorMap.on('move', function() {
+            if (!isUpdating) {
+                const center = colorMap.getCenter();
+                const zoom = colorMap.getZoom();
+                heightMap.setView(center, zoom, { animate: false });
+            }
+        });
+
+        heightMap.on('move', function() {
+            if (!isUpdating) {
+                const center = heightMap.getCenter();
+                const zoom = heightMap.getZoom();
+                colorMap.setView(center, zoom, { animate: false });
+            }
+        });
+    }
+
+    // Initialize when page loads
+    window.addEventListener('load', function() {
+        setTimeout(initializeMaps, 100);
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', function() {
+        if (colorMap && heightMap) {
+            colorMap.invalidateSize();
+            heightMap.invalidateSize();
+        }
+    });
+
+    // API for TouchDesigner integration
+    window.getMapData = function() {
+        if (!colorMap || !heightMap) return null;
+        
+        const bounds = colorMap.getBounds();
+        const center = colorMap.getCenter();
+        const zoom = colorMap.getZoom();
+        
+        return {
+            center: [center.lat, center.lng],
+            zoom: zoom,
+            bounds: {
+                north: bounds.getNorth(),
+                south: bounds.getSouth(),
+                east: bounds.getEast(),
+                west: bounds.getWest()
+            }
+        };
+    };
+
+    window.setMapView = function(lat, lng, zoom) {
+        if (colorMap && heightMap) {
+            isUpdating = true;
+            colorMap.setView([lat, lng], zoom);
+            heightMap.setView([lat, lng], zoom);
+            setTimeout(() => {
+                isUpdating = false;
+            }, 100);
+        }
+    };
 </script>
 ```
 
