@@ -40,8 +40,6 @@
         width: 100%;
         height: 100%;
     }
-    
-    /* Keep side-by-side layout on all screen sizes */
 </style>
 ```
 
@@ -69,29 +67,173 @@
 </script>
 
 <script>
-    // Mapbox tile layers - using working tile service
-    const mapboxLayers = {
-        satellite: {
-            url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            options: {
-                attribution: '© OpenStreetMap',
-                maxZoom: 19,
-                subdomains: ['a', 'b', 'c']
-            }
-        }
-    };
-
-    // Esri satellite imagery
+    // ArcGIS/Esri satellite imagery
     const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         attribution: '© Esri',
         maxZoom: 19
     });
 
-    // Esri elevation data - real elevation values, not just hillshade
-    const elevationLayer = L.tileLayer('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer/tile/{z}/{y}/{x}', {
-        attribution: '© Esri',
-        maxZoom: 15
-    });
+    // Custom elevation layer that processes ArcGIS elevation data into heightmaps
+    function createElevationHeightmapLayer() {
+        const ElevationLayer = L.GridLayer.extend({
+            createTile: function(coords, done) {
+                const tile = L.DomUtil.create('canvas', 'leaflet-tile');
+                const ctx = tile.getContext('2d');
+                const size = this.getTileSize();
+                tile.width = size.x;
+                tile.height = size.y;
+
+                // Get elevation data from ArcGIS
+                this.loadElevationData(coords, tile, ctx, done);
+                return tile;
+            },
+
+            loadElevationData: function(coords, tile, ctx, done) {
+                // Calculate bounding box for this tile
+                const bounds = this.tileToBounds(coords);
+                
+                // ArcGIS elevation service URL
+                const elevationUrl = `https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer/exportImage?bbox=${bounds.west},${bounds.south},${bounds.east},${bounds.north}&bboxSR=4326&size=256,256&imageSR=3857&format=png&pixelType=F32&noDataInterpretation=esriNoDataMatchAny&interpolation=RSP_BilinearInterpolation&f=image`;
+                
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                img.onload = () => {
+                    this.processElevationToHeightmap(img, ctx, tile.width, tile.height);
+                    done(null, tile);
+                };
+                
+                img.onerror = () => {
+                    // Fallback to hillshade if elevation service fails
+                    this.loadHillshade(coords, tile, ctx, done);
+                };
+                
+                img.src = elevationUrl;
+            },
+
+            loadHillshade: function(coords, tile, ctx, done) {
+                const hillshadeUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${coords.z}/${coords.y}/${coords.x}`;
+                
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                img.onload = () => {
+                    this.processHillshadeToHeightmap(img, ctx, tile.width, tile.height);
+                    done(null, tile);
+                };
+                
+                img.onerror = () => {
+                    // Final fallback - solid color
+                    ctx.fillStyle = '#555';
+                    ctx.fillRect(0, 0, tile.width, tile.height);
+                    done(null, tile);
+                };
+                
+                img.src = hillshadeUrl;
+            },
+
+            tileToBounds: function(coords) {
+                const nwPoint = new L.Point(coords.x, coords.y);
+                const sePoint = new L.Point(coords.x + 1, coords.y + 1);
+                
+                const nw = L.CRS.EPSG3857.pointToLatLng(nwPoint, coords.z);
+                const se = L.CRS.EPSG3857.pointToLatLng(sePoint, coords.z);
+                
+                return {
+                    west: nw.lng,
+                    north: nw.lat,
+                    east: se.lng,
+                    south: se.lat
+                };
+            },
+
+            processElevationToHeightmap: function(img, ctx, width, height) {
+                // Draw source image
+                ctx.drawImage(img, 0, 0, width, height);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+
+                // Process pixels to create heightmap colors
+                for (let i = 0; i < data.length; i += 4) {
+                    // Get grayscale value as elevation proxy
+                    const elevation = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    
+                    // Convert to heightmap colors
+                    const color = this.elevationToColor(elevation);
+                    
+                    data[i] = color.r;
+                    data[i + 1] = color.g;
+                    data[i + 2] = color.b;
+                    data[i + 3] = 255;
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+            },
+
+            processHillshadeToHeightmap: function(img, ctx, width, height) {
+                // Draw source image
+                ctx.drawImage(img, 0, 0, width, height);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+
+                // Convert hillshade to heightmap colors
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = data[i]; // Use red channel as elevation proxy
+                    
+                    // Map hillshade intensity to elevation colors
+                    const color = this.elevationToColor(gray);
+                    
+                    data[i] = color.r;
+                    data[i + 1] = color.g;
+                    data[i + 2] = color.b;
+                    data[i + 3] = 255;
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+            },
+
+            elevationToColor: function(elevation) {
+                // Normalize elevation (0-255 range from image data)
+                const normalized = elevation / 255;
+
+                // Create terrain-style color gradient
+                if (normalized < 0.2) {
+                    // Low elevation - blues/greens
+                    return {
+                        r: Math.floor(0 + normalized * 170),
+                        g: Math.floor(100 + normalized * 155),
+                        b: Math.floor(200 - normalized * 100)
+                    };
+                } else if (normalized < 0.5) {
+                    // Medium elevation - greens/yellows
+                    const t = (normalized - 0.2) / 0.3;
+                    return {
+                        r: Math.floor(34 + t * 105),
+                        g: Math.floor(139 + t * 100),
+                        b: Math.floor(34 + t * 20)
+                    };
+                } else if (normalized < 0.75) {
+                    // High elevation - browns
+                    const t = (normalized - 0.5) / 0.25;
+                    return {
+                        r: Math.floor(139 + t * 60),
+                        g: Math.floor(119 - t * 29),
+                        b: Math.floor(54 - t * 11)
+                    };
+                } else {
+                    // Very high elevation - whites/grays
+                    const t = (normalized - 0.75) / 0.25;
+                    const intensity = Math.floor(139 + t * 116);
+                    return {r: intensity, g: intensity, b: intensity};
+                }
+            }
+        });
+
+        return new ElevationLayer({
+            attribution: '© Esri',
+            maxZoom: 15
+        });
+    }
 
     // Initialize maps without zoom controls
     const satelliteMap = L.map('satellite-map', {
@@ -106,7 +248,9 @@
         zoomControl: false
     });
 
-    // Add NASA layers - both from the same reliable source
+    // Add layers
+    const elevationLayer = createElevationHeightmapLayer();
+
     satelliteLayer.addTo(satelliteMap);
     elevationLayer.addTo(elevationMap);
 
@@ -150,7 +294,7 @@
 
     window.addEventListener('resize', handleResize);
     
-    console.log('Split view terrain maps loaded successfully!');
+    console.log('ArcGIS Split View Terrain Maps loaded successfully!');
 </script>
 ```
 
